@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Toonbank Cloud POS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        deep: { 50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe', 300: '#c4b5fd', 400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6', 900: '#4c1d95', 950: '#2e1065'}
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { display: none; }
+        * { -ms-overflow-style: none; scrollbar-width: none; }
+        .glass-nav { background: rgba(46, 16, 101, 0.95); backdrop-filter: blur(10px); }
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 3px solid white; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .active-tab-icon { background: linear-gradient(135deg, #8b5cf6, #4c1d95); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.5); color: white !important; transform: translateY(-5px); }
+        .modal-overlay { transition: opacity 0.3s ease; }
+        .modal-content { transition: transform 0.3s ease, opacity 0.3s ease; transform: scale(0.95); opacity: 0; }
+        .modal-active .modal-content { transform: scale(1); opacity: 1; }
+        .struk-paper { background: #fff; background-image: radial-gradient(#e5e7eb 1px, transparent 0); background-size: 20px 20px; }
+        
+        /* DARK MODE CSS OVERRIDES */
+        html.dark body { background-color: #111827; color: #f9fafb; }
+        html.dark #login-view { background-color: #111827; }
+        html.dark .bg-white { background-color: #1f2937 !important; border-color: #374151 !important; color: #f9fafb !important;}
+        html.dark .bg-gray-50 { background-color: #111827 !important; }
+        html.dark .bg-gray-100 { background-color: #374151 !important; color: #f9fafb !important;}
+        html.dark .text-gray-800, html.dark .text-gray-900 { color: #f9fafb !important; }
+        html.dark .text-gray-600 { color: #d1d5db !important; }
+        html.dark .text-gray-500 { color: #9ca3af !important; }
+        html.dark .border-gray-100, html.dark .border-gray-200 { border-color: #374151 !important; }
+        html.dark input, html.dark select { background-color: #374151 !important; color: white !important; border-color: #4b5563 !important; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased h-screen overflow-hidden select-none transition-colors duration-300">
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-lg z-[150] font-medium text-sm transition-all duration-300 opacity-0 pointer-events-none flex items-center gap-2 w-[90%] max-w-sm">
+        <i class="ph-fill ph-warning-circle text-xl"></i>
+        <span id="toast-msg">Peringatan</span>
+    </div>
+
+    <!-- MODAL OVERLAY -->
+    <div id="modal-container" class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4 modal-overlay opacity-0">
+        
+        <!-- MODAL CONFIRM (CUSTOM UI) -->
+        <div id="modal-confirm" class="bg-white rounded-3xl p-6 w-full max-w-sm hidden modal-content flex-col shadow-2xl text-center">
+            <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4" id="confirm-icon-bg">
+                <i class="ph-bold ph-warning text-3xl text-red-500" id="confirm-icon"></i>
+            </div>
+            <h3 class="font-bold text-lg text-gray-800 mb-2" id="confirm-title">Konfirmasi</h3>
+            <p class="text-sm text-gray-500 mb-6" id="confirm-message">Apakah Anda yakin?</p>
+            <div class="flex gap-3">
+                <button id="btn-confirm-cancel" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-colors text-sm">BATAL</button>
+                <button id="btn-confirm-ok" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl shadow-lg transition-colors text-sm">YAKIN</button>
+            </div>
+        </div>
+
+        <!-- MODAL PROMPT (CUSTOM UI) -->
+        <div id="modal-prompt" class="bg-white rounded-3xl p-6 w-full max-w-sm hidden modal-content flex-col shadow-2xl">
+            <h3 class="font-bold text-lg text-gray-800 mb-2" id="prompt-title">Masukkan Data</h3>
+            <input type="text" id="input-prompt" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 outline-none text-sm font-bold uppercase mb-4">
+            <div class="flex gap-3">
+                <button id="btn-prompt-cancel" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-colors text-sm">BATAL</button>
+                <button id="btn-prompt-ok" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg transition-colors text-sm">SIMPAN</button>
+            </div>
+        </div>
+
+        <!-- MODAL PROFIL ADMIN -->
+        <div id="modal-profil" class="bg-white rounded-3xl p-6 w-full max-w-sm hidden modal-content flex-col shadow-2xl">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="font-bold text-lg text-gray-800">Profil & Pengaturan</h3>
+                <button class="text-gray-400 hover:text-red-500 btn-close-modal"><i class="ph-bold ph-x text-xl"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div><label class="text-xs font-bold text-gray-500">ID Login</label><input type="text" id="setting-id-login" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold lowercase"></div>
+                <div><label class="text-xs font-bold text-gray-500">Nama Toko</label><input type="text" id="setting-nama-toko" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold uppercase"></div>
+                <div><label class="text-xs font-bold text-gray-500">Nama Aplikasi</label><input type="text" id="setting-nama-app" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold uppercase"></div>
+                <div class="flex gap-2 mt-2 pt-2">
+                    <button id="btn-logout" class="flex-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 rounded-xl flex items-center justify-center gap-1 text-xs"><i class="ph-bold ph-sign-out"></i> KELUAR</button>
+                    <button id="btn-simpan-profil" class="flex-[2] bg-deep-700 text-white font-bold py-3 rounded-xl shadow-lg text-sm">SIMPAN</button>
+                </div>
+            </div>
+            
+            <!-- INFO DEVELOPER -->
+            <div class="mt-5 pt-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 rounded-2xl flex justify-between items-center border shadow-sm">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 bg-gradient-to-br from-deep-500 to-blue-500 text-white rounded-full flex items-center justify-center shadow-md">
+                        <i class="ph-bold ph-code text-sm"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-extrabold text-gray-800 dark:text-gray-100 leading-tight">saint lunatic</p>
+                        <p class="text-[9px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Toonbank POS Developer</p>
+                    </div>
+                </div>
+                <a href="https://wa.me/6282143614036" target="_blank" class="bg-green-500 text-white px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 hover:bg-green-600 transition-colors shadow-md">
+                    <i class="ph-bold ph-whatsapp-logo text-xs"></i>
+                    <span class="text-[9px] font-bold">HUBUNGI</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- MODAL TAMBAH STOK -->
+        <div id="modal-stok" class="bg-white rounded-3xl p-6 w-full max-w-sm hidden modal-content flex-col shadow-2xl">
+            <div class="flex justify-between items-center mb-5"><h3 class="font-bold text-lg text-gray-800">Data Produk</h3><button class="text-gray-400 hover:text-red-500 btn-close-modal"><i class="ph-bold ph-x text-xl"></i></button></div>
+            <div class="space-y-4">
+                <input type="hidden" id="input-stok-id">
+                <div><label class="text-xs font-bold text-gray-500">Nama Produk</label><input type="text" id="input-stok-nama" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold uppercase"></div>
+                <div><label class="text-xs font-bold text-gray-500">Tipe</label>
+                    <select id="input-stok-tipe" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold"><option value="DIGITAL">DIGITAL</option><option value="UNIT">FISIK / UNIT</option></select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-xs font-bold text-gray-500">Modal (Rp)</label><input type="number" id="input-stok-modal" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold" value="0"></div>
+                    <div><label class="text-xs font-bold text-gray-500">Jual (Rp)</label><input type="number" id="input-stok-jual" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold" value="0"></div>
+                </div>
+                <button id="btn-simpan-stok" class="w-full bg-deep-700 text-white font-bold py-4 rounded-xl shadow-lg mt-2">SIMPAN</button>
+            </div>
+        </div>
+
+        <!-- MODAL TAMBAH/EDIT DOMPET -->
+        <div id="modal-dompet" class="bg-white rounded-3xl p-6 w-full max-w-sm hidden modal-content flex-col shadow-2xl">
+            <div class="flex justify-between items-center mb-5"><h3 class="font-bold text-lg text-gray-800" id="title-modal-dompet">Rekening</h3><button class="text-gray-400 hover:text-red-500 btn-close-modal"><i class="ph-bold ph-x text-xl"></i></button></div>
+            <div class="space-y-4">
+                <input type="hidden" id="input-dompet-id">
+                <div><label class="text-xs font-bold text-gray-500">Tipe Dompet</label><select id="input-dompet-tipe" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold"><option value="TUNAI">TUNAI / KAS</option><option value="DIGITAL">BANK / DIGITAL</option></select></div>
+                <div><label class="text-xs font-bold text-gray-500">Nama</label><input type="text" id="input-dompet-nama" placeholder="BCA, DANA, dll" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none uppercase text-sm font-bold"></div>
+                <div><label class="text-xs font-bold text-gray-500">Saldo Akhir (Rp)</label><input type="number" id="input-dompet-saldo" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold" value="0"></div>
+                <button id="btn-simpan-dompet" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg mt-2">SIMPAN</button>
+            </div>
+        </div>
+
+        <!-- MODAL TAMBAH/EDIT HUTANG -->
+        <div id="modal-hutang" class="bg-white rounded-3xl p-6 w-full max-w-sm hidden modal-content flex-col shadow-2xl">
+            <div class="flex justify-between items-center mb-5"><h3 class="font-bold text-lg text-gray-800" id="title-modal-hutang">Catat Hutang</h3><button class="text-gray-400 hover:text-red-500 btn-close-modal"><i class="ph-bold ph-x text-xl"></i></button></div>
+            <div class="space-y-4">
+                <input type="hidden" id="input-hutang-id">
+                <div><label class="text-xs font-bold text-gray-500">Nama Pelanggan</label><input type="text" id="input-hutang-nama" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none uppercase text-sm font-bold"></div>
+                <div><label class="text-xs font-bold text-gray-500">Nominal Hutang (Rp)</label><input type="number" id="input-hutang-nominal" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none text-sm font-bold" value="0"></div>
+                <div><label class="text-xs font-bold text-gray-500">Keterangan / Produk</label><input type="text" id="input-hutang-ket" placeholder="Catatan opsional" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 mt-1 outline-none uppercase text-sm font-bold"></div>
+                <button id="btn-simpan-hutang" class="w-full bg-deep-700 text-white font-bold py-4 rounded-xl shadow-lg mt-2">SIMPAN HUTANG</button>
+            </div>
+        </div>
+
+        <!-- MODAL DETAIL HUTANG (MULTI ITEM) -->
+        <div id="modal-detail-hutang" class="bg-white rounded-3xl p-6 w-full max-w-sm hidden modal-content flex-col shadow-2xl">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-3">
+                <h3 class="font-bold text-lg text-gray-800" id="detail-hutang-name">Detail Hutang</h3>
+                <button class="text-gray-400 hover:text-red-500 btn-close-modal"><i class="ph-bold ph-x text-xl"></i></button>
+            </div>
+            <div id="detail-hutang-content" class="space-y-3 text-sm max-h-[60vh] overflow-y-auto pr-1 hide-scroll"></div>
+            <button class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl mt-5 btn-close-modal transition-colors">TUTUP</button>
+        </div>
+
+        <!-- MODAL DETAIL TRANSAKSI (INFO I) -->
+        <div id="modal-detail-trx" class="bg-white rounded-3xl p-6 w-full max-w-sm hidden modal-content flex-col shadow-2xl">
+            <div class="flex justify-between items-center mb-5"><h3 class="font-bold text-lg text-gray-800">Detail Transaksi</h3><button class="text-gray-400 hover:text-red-500 btn-close-modal"><i class="ph-bold ph-x text-xl"></i></button></div>
+            <div id="detail-trx-content" class="space-y-3 text-sm"></div>
+            <button class="w-full bg-gray-100 text-gray-700 font-bold py-3 rounded-xl mt-3 btn-close-modal">TUTUP</button>
+        </div>
+
+        <!-- MODAL KERANJANG & PEMBAYARAN -->
+        <div id="modal-keranjang" class="bg-gray-50 rounded-3xl w-full max-w-md hidden modal-content flex-col shadow-2xl overflow-hidden h-[85vh]">
+            <div class="bg-deep-800 p-5 flex justify-between items-center text-white">
+                <div><h3 class="font-bold text-lg">Pembayaran</h3><p class="text-[10px] text-deep-200" id="cart-item-count">0 Item</p></div>
+                <button class="text-white/70 hover:text-white btn-close-modal bg-white/10 w-8 h-8 rounded-full flex items-center justify-center"><i class="ph-bold ph-x text-sm"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 flex flex-col">
+                <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-4 space-y-3">
+                    <div>
+                        <label class="text-[10px] font-bold text-gray-500 uppercase">Nama Pelanggan (Opsional)</label>
+                        <input type="text" id="kasir-pelanggan" class="w-full border-b border-gray-200 py-2 outline-none text-sm font-bold uppercase text-gray-800" placeholder="UMUM">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase">Status Pembayaran</label>
+                            <select id="kasir-status-bayar" class="w-full border-b border-gray-200 py-2 outline-none text-sm font-bold text-gray-800">
+                                <option value="LUNAS">LUNAS / TUNAI</option>
+                                <option value="HUTANG">HUTANG / KASBON</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase text-blue-600">Ambil Saldo (Potong)</label>
+                            <select id="kasir-dompet-potong" class="w-full border-b border-gray-200 py-2 outline-none text-sm font-bold text-gray-800">
+                                <option value="">- Tidak Potong -</option>
+                                <!-- Diisi JS -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div id="cart-list-container" class="space-y-2 flex-1"></div>
+            </div>
+            <div class="bg-white p-5 border-t border-gray-100 shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
+                <div class="flex justify-between items-center mb-4"><span class="text-sm font-bold text-gray-500">Total Tagihan</span><span class="text-2xl font-bold text-gray-900" id="cart-total-price">Rp 0</span></div>
+                <button id="btn-selesaikan-trx" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 transition-colors"><i class="ph-bold ph-check-circle text-xl"></i> SELESAIKAN</button>
+            </div>
+        </div>
+
+        <!-- MODAL STRUK -->
+        <div id="modal-struk" class="bg-white rounded-xl w-full max-w-xs hidden modal-content flex-col shadow-2xl overflow-hidden struk-paper relative">
+            <div class="absolute -top-3 left-0 right-0 flex justify-around"><div class="w-4 h-4 bg-gray-900/60 rounded-full"></div><div class="w-4 h-4 bg-gray-900/60 rounded-full"></div><div class="w-4 h-4 bg-gray-900/60 rounded-full"></div></div>
+            <div class="p-6 text-center border-b border-dashed border-gray-300 mt-2">
+                <i class="ph-fill ph-storefront text-4xl text-gray-800 mb-2"></i>
+                <h2 class="font-bold text-xl text-gray-800 header-toko-text">LUNACELL</h2>
+                <p class="text-[10px] text-gray-500 header-app-text">PREMIUM POS SYSTEM</p>
+                <p class="text-[10px] text-gray-500 mt-1" id="struk-date"></p>
+                <p class="text-[10px] font-bold text-gray-800 mt-2 bg-gray-100 py-1 rounded inline-block px-3" id="struk-pelanggan-status"></p>
+            </div>
+            <div class="p-5 text-sm space-y-2 border-b border-dashed border-gray-300" id="struk-items"></div>
+            <div class="p-5 text-center">
+                <div class="flex justify-between font-bold text-lg text-gray-800 mb-4"><span>TOTAL</span><span id="struk-total">Rp 0</span></div>
+                <div class="flex gap-2">
+                    <button class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl btn-close-modal text-xs">TUTUP</button>
+                    <button id="btn-wa-struk" class="flex-1 bg-green-500 text-white font-bold py-3 rounded-xl shadow-lg text-xs flex items-center justify-center gap-1 hover:bg-green-600"><i class="ph-bold ph-whatsapp-logo text-base"></i> WHATSAPP</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ================== LOGIN VIEW ================== -->
+    <div id="login-view" class="absolute inset-0 z-50 bg-white flex flex-col items-center justify-center p-6 transition-colors duration-300">
+        
+        <!-- DARK MODE TOGGLE (LOGIN) -->
+        <button onclick="toggleDarkMode()" class="absolute top-6 right-6 text-gray-400 hover:text-gray-800 transition-colors z-[60]">
+            <i class="ph-bold ph-moon text-2xl dark-icon-toggle"></i>
+        </button>
+
+        <div class="w-full max-w-sm flex flex-col items-center pb-12">
+            <div class="w-24 h-24 bg-gradient-to-br from-deep-600 to-deep-900 rounded-3xl flex items-center justify-center shadow-xl shadow-deep-500/30 mb-6">
+                <i class="ph-fill ph-cloud text-5xl text-white"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-900 mb-1">Toonbank <span class="text-deep-600">Cloud</span></h1>
+            <p class="text-xs text-gray-400 font-semibold tracking-widest mb-10">PREMIUM CLOUD POS SYSTEM</p>
+
+            <div class="w-full space-y-4">
+                <div class="relative w-full">
+                    <input type="password" id="store-id" placeholder="MASUKKAN ID TOKO" autocomplete="off"
+                        class="w-full text-center bg-gray-100 text-gray-800 font-bold py-4 rounded-2xl outline-none focus:ring-2 focus:ring-deep-500 transition-all uppercase placeholder:font-normal pr-12 pl-12">
+                    <button id="toggle-password" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-deep-600 transition-colors">
+                        <i class="ph-bold ph-eye text-xl" id="eye-icon"></i>
+                    </button>
+                </div>
+                <button id="btn-login" class="w-full bg-deep-700 hover:bg-deep-800 text-white font-bold py-4 rounded-2xl shadow-lg shadow-deep-700/40 transition-all flex justify-center items-center h-14">
+                    <span id="btn-text">MASUK KE TOKO</span>
+                    <div id="btn-loader" class="spinner hidden"></div>
+                </button>
+            </div>
+        </div>
+        
+        <div class="absolute bottom-6 w-full text-center text-[10px] text-gray-400 font-semibold tracking-wider">
+            &copy; 2026 saint lunatic • v1.0.0
+        </div>
+    </div>
+
+    <!-- ================== MAIN APP VIEW ================== -->
+    <div id="main-view" class="hidden h-full flex flex-col bg-gray-50 relative">
+        <!-- HEADER -->
+        <header class="bg-deep-800 pt-10 pb-6 px-5 rounded-b-[40px] shadow-lg flex justify-between items-start z-10">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                    <i class="ph-fill ph-storefront text-2xl text-white"></i>
+                </div>
+                <div>
+                    <p class="text-deep-200 text-xs font-bold tracking-wider header-app-text">PREMIUM POS</p>
+                    <h2 class="text-white text-xl font-bold header-toko-text">LUNACELL</h2>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <!-- DARK MODE TOGGLE (MAIN) -->
+                <div onclick="toggleDarkMode()" class="w-10 h-10 bg-white/10 hover:bg-white/20 transition-colors rounded-full flex items-center justify-center cursor-pointer border border-white/20 shadow-md">
+                    <i class="ph-bold ph-moon text-white text-lg dark-icon-toggle"></i>
+                </div>
+                <!-- PROFILE TOGGLE -->
+                <div onclick="openModal('profil')" class="w-10 h-10 bg-white/10 hover:bg-white/20 transition-colors rounded-full flex items-center justify-center cursor-pointer border border-white/20 shadow-md">
+                    <i class="ph-bold ph-user text-white text-lg"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- CONTENT AREA -->
+        <main class="flex-1 overflow-y-auto px-5 pt-4 pb-28 relative -mt-8 z-20">
+            
+            <!-- TAB: DASHBOARD -->
+            <div id="tab-dashboard" class="tab-content space-y-4">
+                <div class="bg-gradient-to-br from-deep-900 to-deep-950 rounded-3xl p-6 shadow-xl shadow-deep-900/20 text-white relative overflow-hidden">
+                    <div class="absolute -right-10 -top-10 w-40 h-40 bg-white/5 rounded-full blur-2xl"></div>
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <span class="bg-white/10 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider border border-white/10">CLOUD DATABASE</span>
+                            <p class="text-deep-200 text-xs font-semibold mt-3">TOTAL SALDO TERPUSAT</p>
+                            <h3 class="text-3xl font-bold mt-1" id="dash-total-saldo">Rp 0</h3>
+                        </div>
+                        <div class="w-12 h-12 bg-blue-400 rounded-2xl flex items-center justify-center shadow-lg"><i class="ph-fill ph-wallet text-2xl text-white"></i></div>
+                    </div>
+                    
+                    <!-- FILTER CERDAS PIUTANG & DASHBOARD -->
+                    <div class="border-t border-white/10 pt-4 flex justify-between items-end relative z-10">
+                        <div>
+                            <p class="text-red-500 text-[10px] font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> PIUTANG (PLG)</p>
+                            <p class="text-white font-bold mt-1 text-sm" id="dash-piutang">Rp 0</p>
+                        </div>
+                        <div class="relative">
+                            <select id="dash-filter" onchange="applyDashFilter()" class="bg-white/10 text-[9px] text-white font-bold px-2 py-1.5 rounded-lg border border-white/20 outline-none appearance-none pr-6 cursor-pointer backdrop-blur-sm shadow-sm">
+                                <option value="DEFAULT" class="text-gray-800">Tampilan Default</option>
+                                <option value="HARI_INI" class="text-gray-800">Hari Ini</option>
+                                <option value="7_HARI" class="text-gray-800">7 Hari Terakhir</option>
+                                <option value="BULAN_INI" class="text-gray-800">Bulan Ini</option>
+                            </select>
+                            <i class="ph-bold ph-caret-down absolute right-2 top-1/2 transform -translate-y-1/2 text-white/70 text-[10px] pointer-events-none"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RUNNING TEXT JATUH TEMPO -->
+                <div id="jatuh-tempo-container" class="hidden bg-red-50 border border-red-200 rounded-xl px-3 py-2 flex items-center shadow-sm mb-4">
+                    <i class="ph-fill ph-warning-circle text-red-500 mr-2 animate-pulse text-lg"></i>
+                    <marquee id="jatuh-tempo-text" class="text-[10px] font-bold text-red-600 uppercase" scrollamount="4"></marquee>
+                </div>
+
+                <!-- KOLOM METRIK (Diperbarui via Filter) -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-gradient-to-r from-blue-500 to-cyan-400 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden col-span-1">
+                        <i class="ph-fill ph-chart-line-up absolute -right-2 -bottom-2 text-6xl text-white/10"></i>
+                        <p class="text-[10px] font-bold flex items-center gap-1" id="lbl-box-1"><i class="ph-bold ph-trend-up"></i> HARI INI</p>
+                        <h3 class="text-xl font-bold mt-2" id="val-box-1">Rp 0</h3>
+                    </div>
+                    <div class="bg-gradient-to-r from-indigo-500 to-blue-500 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden col-span-1">
+                        <i class="ph-fill ph-calendar absolute -right-2 -bottom-2 text-6xl text-white/10"></i>
+                        <p class="text-[10px] font-bold flex items-center gap-1" id="lbl-box-2"><i class="ph-bold ph-calendar-blank"></i> BULAN INI</p>
+                        <h3 class="text-xl font-bold mt-2" id="val-box-2">Rp 0</h3>
+                    </div>
+                    
+                    <div class="bg-gradient-to-br from-emerald-400 to-teal-500 rounded-3xl p-5 text-white shadow-lg"><div class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center mb-3"><i class="ph-fill ph-money text-lg"></i></div><p class="text-[10px] font-bold text-emerald-50" id="lbl-box-3">LABA BERSIH</p><h4 class="text-xl font-bold" id="val-box-3">Rp 0</h4></div>
+                    <div class="bg-gradient-to-br from-purple-400 to-deep-500 rounded-3xl p-5 text-white shadow-lg"><div class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center mb-3"><i class="ph-fill ph-receipt text-lg"></i></div><p class="text-[10px] font-bold text-purple-50" id="lbl-box-4">TOTAL TRX</p><h4 class="text-xl font-bold" id="val-box-4">0</h4></div>
+                </div>
+
+                <div class="bg-white rounded-3xl p-5 mt-6 shadow-sm border border-gray-100">
+                    <div class="flex justify-between items-start mb-6">
+                        <div><h3 class="font-bold text-gray-800 text-sm">TREN KEUANGAN</h3><p class="text-[10px] text-gray-400 mt-1">Analisis Omset Real-time (7 Hari)</p></div>
+                        <button class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><i class="ph-bold ph-chart-line-up"></i></button>
+                    </div>
+                    <div class="h-40 w-full relative"><canvas id="trendChart"></canvas></div>
+                </div>
+
+                <!-- RIWAYAT TRANSAKSI AKTIF -->
+                <div class="mt-6 pb-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <div><h3 class="font-bold text-gray-800 text-sm">RIWAYAT TRANSAKSI</h3><p class="text-[10px] text-gray-400 mt-1">Transaksi Berhasil</p></div>
+                        <button onclick="hapusRiwayatBulanan()" class="bg-red-50 text-red-600 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-red-100 flex items-center gap-1 hover:bg-red-100 transition-colors shadow-sm"><i class="ph-bold ph-trash"></i> HAPUS BULANAN</button>
+                    </div>
+                    <!-- COMPACT LIST SCROLLABLE -->
+                    <div id="container-riwayat-trx" class="space-y-2 max-h-[260px] overflow-y-auto pr-1 hide-scroll">
+                        <!-- Transaksi dirender disini -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: STOK -->
+            <div id="tab-stok" class="tab-content hidden mt-6">
+                <div class="flex justify-between items-center mb-4 gap-2">
+                    <h2 class="text-xl font-bold text-gray-800 shrink-0">Stok Produk</h2>
+                    <div class="flex items-center gap-2 flex-1 justify-end">
+                        <div class="relative w-full max-w-[140px] sm:max-w-[200px]">
+                            <i class="ph-bold ph-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
+                            <input type="text" id="search-stok" onkeyup="renderStok()" placeholder="Cari stok..." class="w-full bg-white border border-gray-200 rounded-xl py-2 pl-8 pr-3 text-[10px] outline-none focus:ring-2 focus:ring-blue-500 shadow-sm text-gray-600 uppercase transition-all">
+                        </div>
+                        <button onclick="bukaModalStokBaru()" class="w-10 h-10 bg-deep-900 text-white rounded-xl flex items-center justify-center shadow-lg shrink-0"><i class="ph-bold ph-plus text-lg"></i></button>
+                    </div>
+                </div>
+                <!-- COMPACT LIST SCROLLABLE -->
+                <div id="container-stok-list" class="space-y-2 pb-4 max-h-[60vh] overflow-y-auto pr-1 hide-scroll"></div>
+            </div>
+
+            <!-- TAB: KASIR -->
+            <div id="tab-kasir" class="tab-content hidden mt-6 relative h-full min-h-[60vh]">
+                <div class="flex justify-between items-center mb-4 gap-2">
+                    <h2 class="text-xl font-bold text-gray-800 shrink-0">Menu Kasir</h2>
+                    <div class="flex items-center gap-2 flex-1 justify-end">
+                        <div class="relative w-full max-w-[140px] sm:max-w-[200px]">
+                            <i class="ph-bold ph-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
+                            <input type="text" id="search-kasir" onkeyup="renderKasir()" placeholder="Cari produk..." class="w-full bg-white border border-gray-200 rounded-xl py-2 pl-8 pr-3 text-[10px] outline-none focus:ring-2 focus:ring-blue-500 shadow-sm text-gray-600 uppercase transition-all">
+                        </div>
+                        <button onclick="openModal('keranjang')" class="relative bg-white text-deep-800 w-10 h-10 rounded-xl shadow-sm border border-gray-100 flex items-center justify-center hover:bg-gray-50 transition-colors shrink-0">
+                            <i class="ph-fill ph-shopping-cart text-lg"></i>
+                            <span id="kasir-badge-top" class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center hidden">0</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex gap-2 mb-4 overflow-x-auto pb-1 hide-scroll">
+                    <button onclick="setFilterKasir('SEMUA')" id="filter-SEMUA" class="filter-btn active bg-deep-800 text-white text-[10px] font-bold px-4 py-2 rounded-full whitespace-nowrap">SEMUA</button>
+                    <button onclick="setFilterKasir('DIGITAL')" id="filter-DIGITAL" class="filter-btn bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 text-[10px] font-bold px-4 py-2 rounded-full whitespace-nowrap">DIGITAL</button>
+                    <button onclick="setFilterKasir('UNIT')" id="filter-UNIT" class="filter-btn bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 text-[10px] font-bold px-4 py-2 rounded-full whitespace-nowrap">FISIK / UNIT</button>
+                </div>
+
+                <div id="container-kasir-grid" class="grid grid-cols-3 gap-3 pb-10 pt-2"></div>
+            </div>
+
+            <!-- TAB: DOMPET -->
+            <div id="tab-dompet" class="tab-content hidden mt-6">
+                <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-gray-800">Dompet & Bank</h2><button onclick="openModalTambahDompet()" class="w-10 h-10 bg-deep-900 text-white rounded-xl flex items-center justify-center shadow-lg"><i class="ph-bold ph-plus text-lg"></i></button></div>
+                <div class="bg-white p-1.5 rounded-2xl flex mb-6 shadow-sm border border-gray-100">
+                    <button onclick="toggleDompetTab('saldo')" id="tab-btn-saldo" class="flex-1 bg-blue-600 text-white text-[11px] font-bold py-3 rounded-xl shadow-md transition-all">DAFTAR SALDO</button>
+                    <button onclick="toggleDompetTab('mutasi')" id="tab-btn-mutasi" class="flex-1 text-gray-400 text-[11px] font-bold py-3 rounded-xl hover:text-gray-600 transition-all">RIWAYAT MUTASI</button>
+                </div>
+                <div id="dompet-view-saldo" class="pb-10">
+                    <p class="text-xs font-bold text-gray-500 mb-3 flex items-center gap-1.5"><span class="w-5 h-5 bg-yellow-400 rounded-full inline-flex items-center justify-center text-white text-[10px]"><i class="ph-bold ph-coins"></i></span> KAS / TUNAI</p>
+                    <div id="container-dompet-tunai" class="grid grid-cols-2 gap-3 mb-6"></div>
+                    <p class="text-xs font-bold text-gray-500 mb-3 flex items-center gap-1.5"><span class="w-5 h-5 bg-blue-500 rounded-full inline-flex items-center justify-center text-white text-[10px]"><i class="ph-bold ph-bank"></i></span> BANK / E-WALLET</p>
+                    <div id="container-dompet-digital" class="grid grid-cols-2 gap-3 pb-10"></div>
+                </div>
+                
+                <div id="dompet-view-mutasi" class="hidden pb-10">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-gray-800 text-sm">Riwayat Mutasi</h3>
+                        <button onclick="hapusSemuaMutasi()" class="bg-red-50 text-red-600 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-red-100 flex items-center gap-1 hover:bg-red-100 transition-colors shadow-sm"><i class="ph-bold ph-trash"></i> HAPUS SEMUA</button>
+                    </div>
+                    <div id="container-mutasi-list" class="space-y-3"></div>
+                </div>
+            </div>
+
+            <!-- TAB: HUTANG -->
+            <div id="tab-hutang" class="tab-content hidden mt-6">
+                <div class="flex justify-between items-center mb-4 gap-2">
+                    <h2 class="text-xl font-bold text-gray-800 shrink-0">Hutang</h2>
+                    <div class="flex items-center gap-2 flex-1 justify-end">
+                        <div class="relative w-full max-w-[140px] sm:max-w-[200px]">
+                            <i class="ph-bold ph-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
+                            <input type="text" id="search-hutang" onkeyup="renderHutangList()" placeholder="Cari nama..." class="w-full bg-white border border-gray-200 rounded-xl py-2 pl-8 pr-3 text-[10px] outline-none focus:ring-2 focus:ring-blue-500 shadow-sm text-gray-600 uppercase transition-all">
+                        </div>
+                        <button onclick="openModal('hutang')" class="bg-deep-900 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0"><i class="ph-bold ph-plus text-lg"></i></button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-1.5 rounded-2xl flex mb-6 shadow-sm border border-gray-100">
+                    <button onclick="toggleHutangTab('list')" id="tab-btn-hutang-list" class="flex-1 bg-blue-600 text-white text-[11px] font-bold py-3 rounded-xl shadow-md transition-all">PELANGGAN</button>
+                    <button onclick="toggleHutangTab('riwayat')" id="tab-btn-hutang-riwayat" class="flex-1 text-gray-400 text-[11px] font-bold py-3 rounded-xl hover:text-gray-600 transition-all">RIWAYAT AKTIFITAS</button>
+                </div>
+                
+                <!-- COMPACT LIST SCROLLABLE -->
+                <div id="hutang-view-list" class="pb-10"><div id="container-hutang-list" class="space-y-2 max-h-[60vh] overflow-y-auto pr-1 hide-scroll"></div></div>
+                <div id="hutang-view-riwayat" class="hidden pb-10">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-gray-800 text-sm">Riwayat Aktifitas</h3>
+                        <button onclick="hapusSemuaRiwayatHutang()" class="bg-red-50 text-red-600 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-red-100 flex items-center gap-1 hover:bg-red-100 transition-colors shadow-sm"><i class="ph-bold ph-trash"></i> HAPUS SEMUA</button>
+                    </div>
+                    <!-- COMPACT LIST SCROLLABLE -->
+                    <div id="container-hutang-riwayat" class="space-y-2 max-h-[60vh] overflow-y-auto pr-1 hide-scroll"></div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- BOTTOM NAVIGATION -->
+        <nav class="fixed bottom-4 left-4 right-4 glass-nav rounded-full px-2 py-2 flex justify-between items-center shadow-2xl z-50">
+            <button onclick="switchTab('dashboard')" class="nav-btn w-[20%] flex flex-col items-center gap-1 py-1 relative text-gray-400 hover:text-white transition-colors" data-target="dashboard">
+                <div class="icon-bg w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 active-tab-icon"><i class="ph-fill ph-chart-pie-slice text-2xl"></i></div>
+                <span class="text-[9px] font-bold mt-1 text-white">DASHBOARD</span>
+            </button>
+            <button onclick="switchTab('stok')" class="nav-btn w-[20%] flex flex-col items-center gap-1 py-1 relative text-gray-400 hover:text-white transition-colors" data-target="stok">
+                <div class="icon-bg w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300"><i class="ph-fill ph-package text-2xl"></i></div>
+                <span class="text-[9px] font-bold mt-1 hidden">STOK</span>
+            </button>
+            <button onclick="switchTab('kasir')" class="nav-btn w-[20%] flex flex-col items-center gap-1 py-1 relative text-gray-400 hover:text-white transition-colors" data-target="kasir">
+                <div class="icon-bg w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300"><i class="ph-fill ph-cash-register text-2xl"></i></div>
+                <span class="text-[9px] font-bold mt-1 hidden">KASIR</span>
+            </button>
+            <button onclick="switchTab('dompet')" class="nav-btn w-[20%] flex flex-col items-center gap-1 py-1 relative text-gray-400 hover:text-white transition-colors" data-target="dompet">
+                <div class="icon-bg w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300"><i class="ph-fill ph-wallet text-2xl"></i></div>
+                <span class="text-[9px] font-bold mt-1 hidden">DOMPET</span>
+            </button>
+            <button onclick="switchTab('hutang')" class="nav-btn w-[20%] flex flex-col items-center gap-1 py-1 relative text-gray-400 hover:text-white transition-colors" data-target="hutang">
+                <div class="icon-bg w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300"><i class="ph-fill ph-users text-2xl"></i></div>
+                <span class="text-[9px] font-bold mt-1 hidden">HUTANG</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // --- DATA STATE KOSONG (Akan diisi dari Google Sheets) ---
+        let appSettings = {};
+        let stateProducts = [];
+        let stateWallets = [];
+        let stateCart = [];
+        let stateMutasi = [];
+        let stateTransactions = [];
+        let stateHutang = []; 
+        let stateRiwayatHutang = [];
+
+        let currentKasirFilter = 'SEMUA';
+        let currentStrukTextWA = '';
+        let isDemoMode = false;
+        let sessionToken = '';
+        let currentDashFilter = 'DEFAULT';
+
+        // --- DARK MODE LOGIC ---
+        let isDarkMode = localStorage.getItem('theme') === 'dark';
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+            applyDarkMode();
+        }
+        function applyDarkMode() {
+            if(isDarkMode) {
+                document.documentElement.classList.add('dark');
+                document.querySelectorAll('.dark-icon-toggle').forEach(el => el.classList.replace('ph-moon', 'ph-sun'));
+            } else {
+                document.documentElement.classList.remove('dark');
+                document.querySelectorAll('.dark-icon-toggle').forEach(el => el.classList.replace('ph-sun', 'ph-moon'));
+            }
+        }
+        applyDarkMode();
+
+        // --- UTILS ---
+        function formatRp(angka) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka); }
+        function formatDate() { return new Date().toLocaleString('id-ID', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }); }
+        function uid() { return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+        function nowTs() { return Date.now(); }
+        function getRecordTime(record) { return Number(record && (record.timestamp || record.createdAt || record.id)) || 0; }
+
+        // --- PRIVASI MODE DEMO ---
+        function checkDemoBlock() {
+            if(isDemoMode) {
+                showToast('Mode Demo: Tidak dapat menyimpan / menghapus data!', true);
+                return true;
+            }
+            return false;
+        }
+
+        // --- GOOGLE SCRIPT SYNC ---
+        function syncToServer(key, dataObj) {
+            if (isDemoMode) return; // Cegah sinkronisasi mutlak ke server untuk Demo
+            if(typeof google !== 'undefined' && google.script) {
+                if(!sessionToken) { showToast('Sesi login tidak ditemukan. Silakan login ulang!'); return; }
+                google.script.run
+                    .withFailureHandler(function(err) {
+                        showToast((err && err.message) ? err.message : 'Gagal menyimpan data ke server!');
+                    })
+                    .saveDataServer(sessionToken, key, JSON.stringify(dataObj));
+            }
+        }
+
+        // --- UPDATE DASHBOARD STATS & REAL-TIME CHART ---
+        function applyDashFilter() {
+            currentDashFilter = document.getElementById('dash-filter').value;
+            updateDashboardStats();
+        }
+
+        function updateDashboardStats() {
+            const totalSaldo = stateWallets.reduce((sum, w) => sum + w.balance, 0);
+            document.getElementById('dash-total-saldo').textContent = formatRp(totalSaldo);
+            
+            const totalPiutang = stateHutang.reduce((sum, h) => sum + h.amount, 0);
+            document.getElementById('dash-piutang').textContent = formatRp(totalPiutang);
+            
+            // --- LOGIKA FILTER CERDAS DASHBOARD ---
+            let now = Date.now();
+            let oneDay = 24 * 60 * 60 * 1000;
+            let filteredTxs = stateTransactions;
+
+            if (currentDashFilter === 'HARI_INI') {
+                let startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+                filteredTxs = stateTransactions.filter(t => getRecordTime(t) >= startOfDay.getTime());
+            } else if (currentDashFilter === '7_HARI') {
+                filteredTxs = stateTransactions.filter(t => (now - getRecordTime(t)) <= (7 * oneDay));
+            } else if (currentDashFilter === 'BULAN_INI') {
+                let startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
+                filteredTxs = stateTransactions.filter(t => getRecordTime(t) >= startOfMonth.getTime());
+            }
+
+            if (currentDashFilter === 'DEFAULT') {
+                let oHari = 0, oBulan = 0, laba = 0;
+                let startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+                let startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
+
+                stateTransactions.forEach(t => {
+                    if(getRecordTime(t) >= startOfMonth.getTime()) oBulan += t.total;
+                    if(getRecordTime(t) >= startOfDay.getTime()) oHari += t.total;
+                    t.items.forEach(i => {
+                        let prod = stateProducts.find(p => p.id == i.id);
+                        if(prod && prod.modal > 0) laba += ((i.price - prod.modal) * i.qty);
+                        else laba += (i.price * i.qty * 0.1);
+                    });
+                });
+
+                document.getElementById('lbl-box-1').innerHTML = '<i class="ph-bold ph-trend-up"></i> HARI INI';
+                document.getElementById('val-box-1').textContent = formatRp(oHari);
+                document.getElementById('lbl-box-2').innerHTML = '<i class="ph-bold ph-calendar-blank"></i> BULAN INI';
+                document.getElementById('val-box-2').textContent = formatRp(oBulan);
+                document.getElementById('lbl-box-3').textContent = 'LABA BERSIH';
+                document.getElementById('val-box-3').textContent = formatRp(laba);
+                document.getElementById('lbl-box-4').textContent = 'TOTAL TRX';
+                document.getElementById('val-box-4').textContent = stateTransactions.length;
+            } else {
+                let oFiltered = 0, labaF = 0, itemTerjual = 0;
+                filteredTxs.forEach(t => {
+                    oFiltered += t.total;
+                    t.items.forEach(i => {
+                        itemTerjual += i.qty;
+                        let prod = stateProducts.find(p => p.id == i.id);
+                        // Fallback keamanan jika produk dihapus dari sistem
+                        if(prod && prod.modal > 0) labaF += ((i.price - prod.modal) * i.qty);
+                        else labaF += (i.price * i.qty * 0.1); 
+                    });
+                });
+
+                document.getElementById('lbl-box-1').innerHTML = '<i class="ph-bold ph-funnel"></i> OMSET (F)';
+                document.getElementById('val-box-1').textContent = formatRp(oFiltered);
+                document.getElementById('lbl-box-2').innerHTML = '<i class="ph-bold ph-receipt"></i> TOTAL TRX (F)';
+                document.getElementById('val-box-2').textContent = filteredTxs.length;
+                document.getElementById('lbl-box-3').textContent = 'LABA BERSIH (F)';
+                document.getElementById('val-box-3').textContent = formatRp(labaF);
+                document.getElementById('lbl-box-4').textContent = 'PRODUK TERJUAL';
+                document.getElementById('val-box-4').textContent = itemTerjual;
+            }
+
+            // Update Grafik Tren Real-Time (7 Hari Terakhir)
+            if(window.myChart) {
+                let labels = []; let dataOmset = [];
+                for(let i=6; i>=0; i--) {
+                    let d = new Date(); d.setDate(d.getDate() - i);
+                    let label = d.toLocaleString('id-ID', { day:'numeric', month:'short' });
+                    labels.push(label);
+                    
+                    let dayStart = new Date(d); dayStart.setHours(0,0,0,0);
+                    let dayEnd = dayStart.getTime() + (24 * 60 * 60 * 1000);
+                    let sum = stateTransactions.reduce((acc, t) => {
+                        const trxTime = getRecordTime(t);
+                        if(trxTime >= dayStart.getTime() && trxTime < dayEnd) return acc + t.total;
+                        return acc;
+                    }, 0);
+                    dataOmset.push(sum / 1000000); 
+                }
+                window.myChart.data.labels = labels;
+                window.myChart.data.datasets[0].data = dataOmset;
+                window.myChart.update();
+            }
+        }
+
+        // --- MODAL & TOAST ---
+        let toastTimeout;
+        function showToast(message, isError = true) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').textContent = message;
+            toast.className = `fixed top-5 left-1/2 transform -translate-x-1/2 text-white px-6 py-3 rounded-full shadow-lg z-[150] font-medium text-sm transition-all duration-300 flex items-center gap-2 w-[90%] max-w-sm ${isError ? 'bg-red-500' : 'bg-blue-600'}`;
+            toast.querySelector('i').className = isError ? 'ph-fill ph-warning-circle text-xl' : 'ph-fill ph-info text-xl';
+            toast.classList.remove('opacity-0', '-translate-y-4');
+            clearTimeout(toastTimeout); toastTimeout = setTimeout(() => { toast.classList.add('opacity-0', '-translate-y-4'); }, 3000);
+        }
+        function showInfo(msg) { showToast(msg, false); }
+        
+        const modalContainer = document.getElementById('modal-container');
+        function openModal(id) {
+            document.querySelectorAll('.modal-content').forEach(m => m.classList.add('hidden'));
+            const modal = document.getElementById('modal-' + id);
+            if(modal) {
+                modalContainer.classList.remove('hidden'); modalContainer.classList.add('flex');
+                modal.classList.remove('hidden'); modal.classList.add('flex');
+                setTimeout(() => { modalContainer.classList.remove('opacity-0'); modalContainer.classList.add('modal-active'); }, 10);
+            }
+        }
+        function closeModals() {
+            modalContainer.classList.remove('modal-active'); modalContainer.classList.add('opacity-0');
+            setTimeout(() => {
+                modalContainer.classList.add('hidden'); modalContainer.classList.remove('flex');
+                document.querySelectorAll('.modal-content').forEach(m => { m.classList.add('hidden'); m.classList.remove('flex'); });
+            }, 300);
+        }
+        document.querySelectorAll('.btn-close-modal').forEach(btn => btn.addEventListener('click', closeModals));
+
+        // --- CUSTOM UI MODALS ---
+        let confirmCallback = null;
+        function showConfirm(message, callback, title = 'Konfirmasi', isDanger = true) {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-message').textContent = message;
+            const btnOk = document.getElementById('btn-confirm-ok');
+            const iconBg = document.getElementById('confirm-icon-bg');
+            const icon = document.getElementById('confirm-icon');
+            if(isDanger) {
+                btnOk.className = 'flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl shadow-lg transition-colors text-sm';
+                iconBg.className = 'w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4';
+                icon.className = 'ph-bold ph-warning text-3xl text-red-500';
+            } else {
+                btnOk.className = 'flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl shadow-lg transition-colors text-sm';
+                iconBg.className = 'w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4';
+                icon.className = 'ph-bold ph-check-circle text-3xl text-emerald-500';
+            }
+            confirmCallback = callback; openModal('confirm');
+        }
+        document.getElementById('btn-confirm-cancel').addEventListener('click', () => { closeModals(); confirmCallback = null; });
+        document.getElementById('btn-confirm-ok').addEventListener('click', () => { closeModals(); if(confirmCallback) { setTimeout(() => confirmCallback(), 300); } });
+
+        let promptCallback = null;
+        function showPrompt(title, defaultValue, callback) {
+            document.getElementById('prompt-title').textContent = title;
+            const input = document.getElementById('input-prompt');
+            input.value = defaultValue || '';
+            promptCallback = callback; openModal('prompt'); setTimeout(() => input.focus(), 100);
+        }
+        document.getElementById('btn-prompt-cancel').addEventListener('click', () => { closeModals(); promptCallback = null; });
+        document.getElementById('btn-prompt-ok').addEventListener('click', () => { const val = document.getElementById('input-prompt').value; closeModals(); if(promptCallback) { setTimeout(() => promptCallback(val), 300); } });
+
+        // --- PROFIL ---
+        document.getElementById('btn-simpan-profil').addEventListener('click', () => {
+            if(checkDemoBlock()) return;
+            appSettings.idLogin = document.getElementById('setting-id-login').value.trim() || 'lunatic';
+            appSettings.namaToko = document.getElementById('setting-nama-toko').value.trim() || 'LUNACELL';
+            appSettings.namaApp = document.getElementById('setting-nama-app').value.trim() || 'PREMIUM POS';
+            document.querySelectorAll('.header-toko-text').forEach(el => el.textContent = appSettings.namaToko.toUpperCase());
+            document.querySelectorAll('.header-app-text').forEach(el => el.textContent = appSettings.namaApp.toUpperCase());
+            syncToServer('SETTINGS', appSettings);
+            showInfo('Profil diperbarui'); closeModals();
+        });
+        document.querySelector('div[onclick="openModal(\'profil\')"]').addEventListener('click', () => {
+            document.getElementById('setting-id-login').value = isDemoMode ? '*** (TERSEMBUNYI MODE DEMO)' : (appSettings.idLogin || '');
+            document.getElementById('setting-id-login').disabled = isDemoMode;
+            document.getElementById('setting-nama-toko').value = appSettings.namaToko || '';
+            document.getElementById('setting-nama-app').value = appSettings.namaApp || '';
+        });
+
+        // --- DASHBOARD TRANSAKSI (COMPACT LIST) ---
+        function renderTransactions() {
+            const con = document.getElementById('container-riwayat-trx'); con.innerHTML = '';
+            if(stateTransactions.length === 0) { con.innerHTML = '<p class="text-center text-xs text-gray-400 py-6">Belum ada transaksi.</p>'; updateDashboardStats(); return; }
+            
+            [...stateTransactions].reverse().forEach((trx, i) => {
+                const statusColor = trx.status === 'HUTANG' ? 'text-red-500' : 'text-emerald-500';
+                const statusIcon = trx.status === 'HUTANG' ? 'ph-warning' : 'ph-check';
+                con.innerHTML += `
+                <div class="bg-white p-2.5 rounded-xl shadow-sm flex items-center border border-gray-100 relative mb-2">
+                    <span class="absolute left-1.5 top-1.5 text-[7px] text-gray-300 font-bold">${i+1}</span>
+                    <div class="w-8 h-8 rounded-xl bg-blue-500 text-white flex items-center justify-center font-bold text-xs mr-2 ml-1">${trx.customer.charAt(0) || 'U'}</div>
+                    <div class="flex-1 pr-1">
+                        <h4 class="font-bold text-gray-800 text-xs">${trx.customer}</h4>
+                        <p class="text-[8px] text-gray-400 mt-0.5">${trx.date}</p>
+                        <div class="flex items-center gap-1.5 mt-1 text-[9px] font-bold">
+                            <span class="text-blue-500 flex items-center gap-0.5"><i class="ph-fill ph-receipt"></i> ${formatRp(trx.total)}</span>
+                            <span class="${statusColor} flex items-center gap-0.5"><i class="ph-bold ${statusIcon}"></i> ${trx.status}</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="cetakStrukUlang('${trx.id}')" class="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200 transition" title="Lihat Struk"><i class="ph-bold ph-receipt text-[11px]"></i></button>
+                        <button onclick="detailTrx('${trx.id}')" class="w-7 h-7 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-600 flex items-center justify-center border border-gray-200 transition" title="Info Detail"><i class="ph-bold ph-info text-[11px]"></i></button>
+                    </div>
+                </div>`;
+            });
+            updateDashboardStats();
+        }
+        function detailTrx(id) {
+            const t = stateTransactions.find(x => x.id == id);
+            if(t) {
+                let itemsHtml = t.items.map(i => `<div class="flex justify-between"><span class="text-gray-500">${i.name} (${i.qty}x)</span><span class="font-bold">${formatRp(i.price * i.qty)}</span></div>`).join('');
+                document.getElementById('detail-trx-content').innerHTML = `<div class="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-3 text-center"><p class="text-[10px] font-bold text-gray-400 mb-1">TOTAL TRANSAKSI</p><h3 class="text-xl font-bold text-deep-700">${formatRp(t.total)}</h3><span class="text-[9px] font-bold px-2 py-0.5 rounded bg-gray-200 mt-2 inline-block">${t.status}</span></div><p class="text-xs text-gray-500">Pelanggan: <strong class="text-gray-800">${t.customer}</strong></p><p class="text-xs text-gray-500 mb-2">Tanggal: <strong class="text-gray-800">${t.date}</strong></p><div class="border-t border-gray-100 pt-2">${itemsHtml}</div><button onclick="hapusTrxIndividual('${id}')" class="mt-4 w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2.5 rounded-xl border border-red-200 transition text-xs shadow-sm flex items-center justify-center gap-1"><i class="ph-bold ph-trash"></i> HAPUS TRANSAKSI INI</button>`;
+                openModal('detail-trx');
+            }
+        }
+        function cetakStrukUlang(id) {
+            const trx = stateTransactions.find(t => t.id == id);
+            if(trx) {
+                const con = document.getElementById('struk-items'); con.innerHTML = ''; let waItemsText = '';
+                trx.items.forEach(item => {
+                    const sub = item.price * item.qty;
+                    con.innerHTML += `<div class="flex justify-between items-start"><div class="flex-1 pr-2"><p class="font-bold text-gray-800 uppercase text-[11px]">${item.name}</p><p class="text-[10px] text-gray-500">${item.qty}x @${item.price}</p></div><p class="font-bold text-gray-800 text-[11px]">${formatRp(sub)}</p></div>`;
+                    waItemsText += `- ${item.name} (${item.qty}x): ${formatRp(sub)}\n`;
+                });
+                document.getElementById('struk-total').textContent = formatRp(trx.total); 
+                document.getElementById('struk-date').textContent = trx.date; 
+                document.getElementById('struk-pelanggan-status').textContent = `PEL: ${trx.customer} | ST: ${trx.status}`;
+                currentStrukTextWA = `*STRUK PEMBELIAN ${appSettings.namaToko || 'TOKO'}*\n----------------------\nTgl: ${trx.date}\nPelanggan: ${trx.customer}\nStatus: ${trx.status}\n----------------------\n${waItemsText}----------------------\n*TOTAL: ${formatRp(trx.total)}*\nTerima kasih!`;
+                openModal('struk');
+            }
+        }
+        function hapusTrxIndividual(id) {
+            if(checkDemoBlock()) return;
+            showConfirm('Hapus transaksi ini secara permanen?', () => {
+                stateTransactions = stateTransactions.filter(t => t.id != id);
+                syncToServer('TRANSACTIONS', stateTransactions);
+                renderTransactions(); showInfo('Transaksi dihapus.', false);
+            });
+        }
+        function hapusRiwayatBulanan() {
+            if(checkDemoBlock()) return;
+            showConfirm('Hapus semua riwayat transaksi untuk bulan ini?', () => {
+                const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
+                const nextMonth = new Date(startOfMonth); nextMonth.setMonth(nextMonth.getMonth() + 1);
+                stateTransactions = stateTransactions.filter(t => {
+                    const trxTime = getRecordTime(t);
+                    return !(trxTime >= startOfMonth.getTime() && trxTime < nextMonth.getTime());
+                });
+                syncToServer('TRANSACTIONS', stateTransactions);
+                renderTransactions(); showInfo('Riwayat bulan ini dibersihkan.');
+            });
+        }
+
+        // --- STOK (COMPACT LIST) ---
+        function renderStok() {
+            const con = document.getElementById('container-stok-list'); con.innerHTML = '';
+            const search = document.getElementById('search-stok') ? document.getElementById('search-stok').value.toUpperCase() : '';
+            let filtered = stateProducts.filter(p => p.name.includes(search));
+            
+            if(filtered.length === 0) { con.innerHTML = '<p class="text-center text-xs text-gray-400 py-6">Produk tidak ditemukan.</p>'; return; }
+            
+            filtered.forEach(p => { 
+                con.innerHTML += `
+                <div class="bg-white p-2.5 rounded-xl shadow-sm flex justify-between items-center border border-gray-100 mb-2">
+                    <div>
+                        <h4 class="font-bold text-gray-800 text-xs uppercase">${p.name}</h4>
+                        <p class="text-[9px] text-gray-400 mt-0.5">Modal: ${formatRp(p.modal)} • Jual: ${formatRp(p.jual)}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="${p.type==='DIGITAL'?'text-deep-600':'text-blue-600'} text-[9px] font-bold tracking-wider">${p.type}</span>
+                        <div class="flex gap-1">
+                            <button onclick="editStok('${p.id}')" class="w-6 h-6 rounded-md bg-yellow-50 hover:bg-yellow-100 transition text-yellow-600 flex items-center justify-center"><i class="ph-bold ph-pencil-simple text-[10px]"></i></button>
+                            <button onclick="hapusStok('${p.id}')" class="w-6 h-6 rounded-md bg-red-50 hover:bg-red-100 transition text-red-600 flex items-center justify-center"><i class="ph-bold ph-trash text-[10px]"></i></button>
+                        </div>
+                    </div>
+                </div>`; 
+            });
+            renderKasir();
+        }
+        function bukaModalStokBaru() {
+            document.getElementById('input-stok-id').value = '';
+            document.getElementById('input-stok-nama').value = '';
+            document.getElementById('input-stok-modal').value = '0';
+            document.getElementById('input-stok-jual').value = '0';
+            openModal('stok');
+        }
+        function editStok(id) {
+            const p = stateProducts.find(x => x.id == id);
+            if(p) {
+                document.getElementById('input-stok-id').value = p.id;
+                document.getElementById('input-stok-nama').value = p.name;
+                document.getElementById('input-stok-tipe').value = p.type;
+                document.getElementById('input-stok-modal').value = p.modal;
+                document.getElementById('input-stok-jual').value = p.jual;
+                openModal('stok');
+            }
+        }
+        document.getElementById('btn-simpan-stok').addEventListener('click', () => {
+            if(checkDemoBlock()) return;
+            const n = document.getElementById('input-stok-nama').value; if(!n) return showToast('Nama wajib diisi!');
+            
+            const idToEdit = document.getElementById('input-stok-id').value;
+            const type = document.getElementById('input-stok-tipe').value;
+            const modal = parseInt(document.getElementById('input-stok-modal').value)||0;
+            const jual = parseInt(document.getElementById('input-stok-jual').value)||0;
+
+            if(idToEdit) {
+                const idx = stateProducts.findIndex(p => p.id == idToEdit);
+                if (idx !== -1) { stateProducts[idx] = { id: idToEdit, name: n, type, modal, jual }; showInfo('Data produk diperbarui.'); }
+            } else {
+                stateProducts.push({ id: uid(), name: n, type, modal, jual, timestamp: nowTs() }); showInfo('Produk ditambah.');
+            }
+            
+            syncToServer('PRODUCTS', stateProducts);
+            closeModals(); renderStok(); document.getElementById('input-stok-nama').value=''; document.getElementById('input-stok-id').value='';
+        });
+        function hapusStok(id) {
+            if(checkDemoBlock()) return;
+            showConfirm('Yakin ingin menghapus produk ini?', () => {
+                stateProducts = stateProducts.filter(p => p.id != id); 
+                syncToServer('PRODUCTS', stateProducts); renderStok(); showInfo('Produk dihapus.', false);
+            });
+        }
+
+        // --- KASIR & KERANJANG ---
+        function setFilterKasir(f) {
+            currentKasirFilter = f;
+            document.querySelectorAll('.filter-btn').forEach(b => b.className = 'filter-btn bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 text-[10px] font-bold px-4 py-2 rounded-full whitespace-nowrap transition-colors');
+            document.getElementById('filter-'+f).className = 'filter-btn active bg-deep-800 text-white text-[10px] font-bold px-4 py-2 rounded-full whitespace-nowrap transition-colors shadow-md';
+            renderKasir();
+        }
+        function renderKasir() {
+            const con = document.getElementById('container-kasir-grid'); con.innerHTML = '';
+            const search = document.getElementById('search-kasir') ? document.getElementById('search-kasir').value.toUpperCase() : '';
+            
+            let filtered = currentKasirFilter === 'SEMUA' ? stateProducts : stateProducts.filter(p => p.type === currentKasirFilter);
+            filtered = filtered.filter(p => p.name.includes(search));
+            
+            if(filtered.length === 0) { con.innerHTML = `<p class="col-span-3 text-center text-xs text-gray-400 py-6">Produk kasir tidak ditemukan.</p>`; return; }
+            
+            filtered.forEach(prod => {
+                const cartItem = stateCart.find(c => c.id == prod.id); const qty = cartItem ? cartItem.qty : 0;
+                if(qty > 0) {
+                    con.innerHTML += `<div class="bg-deep-50 border-2 border-deep-400 rounded-2xl p-2 shadow-sm flex flex-col items-center justify-between text-center gap-1 h-[110px]"><h4 class="text-[9px] font-bold text-deep-900 leading-tight uppercase line-clamp-2 mt-1">${prod.name}</h4><p class="text-[9px] font-bold text-deep-600">${formatRp(cartItem.price)}</p><div class="w-full flex items-center justify-between bg-white rounded-lg p-1 shadow-sm mt-auto"><button onclick="changeQtyKasir('${prod.id}', -1)" class="w-6 h-6 bg-gray-100 rounded text-gray-600 font-bold active:bg-gray-200">-</button><span class="text-xs font-bold w-4 text-center text-deep-700">${qty}</span><button onclick="changeQtyKasir('${prod.id}', 1)" class="w-6 h-6 bg-deep-600 rounded text-white font-bold active:bg-deep-700">+</button></div></div>`;
+                } else {
+                    con.innerHTML += `<div onclick="addToCart('${prod.id}')" class="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center gap-2 cursor-pointer active:scale-95 transition-all hover:border-deep-300 h-[110px]"><div class="w-10 h-10 rounded-full ${prod.type==='DIGITAL'?'text-blue-500 bg-blue-50':'text-emerald-500 bg-emerald-50'} flex items-center justify-center mb-1"><i class="ph-fill ${prod.type==='DIGITAL'?'ph-device-mobile':'ph-package'} text-xl"></i></div><h4 class="text-[9px] font-bold text-gray-800 leading-tight uppercase line-clamp-2">${prod.name}</h4><p class="text-[9px] font-bold text-deep-600 bg-deep-50 px-2 py-0.5 rounded-full w-full">${formatRp(prod.jual)}</p></div>`;
+                }
+            });
+        }
+        function addToCart(id) {
+            const p = stateProducts.find(x => x.id == id); if(!p) return;
+            let price = p.jual; 
+            if(price===0) { 
+                showPrompt(`Harga jual ${p.name}:`, "0", (m) => {
+                    if(m===null || m==='') return; 
+                    price = parseInt(m) || 0;
+                    stateCart.push({ id: p.id, name: p.name, price, qty: 1 }); updateCartUI(); renderKasir();
+                });
+            } else {
+                stateCart.push({ id: p.id, name: p.name, price, qty: 1 }); updateCartUI(); renderKasir();
+            }
+        }
+        function changeQtyKasir(id, d) {
+            const i = stateCart.findIndex(c => c.id == id);
+            if(i !== -1) { stateCart[i].qty += d; if(stateCart[i].qty <= 0) stateCart.splice(i, 1); updateCartUI(); renderKasir(); }
+        }
+        function changeQty(index, d) {
+            stateCart[index].qty += d; if(stateCart[index].qty <= 0) stateCart.splice(index, 1); updateCartUI(); renderKasir(); if(stateCart.length===0) closeModals();
+        }
+        function updateCartUI() {
+            const badge = document.getElementById('kasir-badge-top');
+            if(stateCart.length > 0) {
+                badge.classList.remove('hidden');
+                let tQty = 0; let tPrice = 0; stateCart.forEach(i => { tQty += i.qty; tPrice += (i.price * i.qty); });
+                badge.textContent = tQty;
+                
+                const con = document.getElementById('cart-list-container'); con.innerHTML = '';
+                stateCart.forEach((item, idx) => {
+                    con.innerHTML += `<div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center"><div class="flex-1 pr-2"><h4 class="text-xs font-bold text-gray-800 uppercase">${item.name}</h4><p class="text-[10px] text-gray-400 mt-0.5">${formatRp(item.price)} x ${item.qty}</p></div><div class="flex flex-col items-end gap-2"><p class="text-sm font-bold text-deep-700">${formatRp(item.price * item.qty)}</p><div class="flex items-center gap-2 bg-gray-50 rounded-lg p-1"><button onclick="changeQty(${idx}, -1)" class="w-6 h-6 bg-white rounded shadow text-gray-600 font-bold">-</button><span class="text-xs font-bold w-4 text-center">${item.qty}</span><button onclick="changeQty(${idx}, 1)" class="w-6 h-6 bg-white rounded shadow text-gray-600 font-bold">+</button></div></div></div>`;
+                });
+                document.getElementById('cart-item-count').textContent = `${tQty} Item`; document.getElementById('cart-total-price').textContent = formatRp(tPrice);
+                
+                const selDompet = document.getElementById('kasir-dompet-potong');
+                selDompet.innerHTML = '<option value="">- Tidak Potong -</option>';
+                stateWallets.forEach(w => selDompet.innerHTML += `<option value="${w.id}">${w.name} (${formatRp(w.balance)})</option>`);
+                
+            } else { badge.classList.add('hidden'); }
+        }
+
+        document.getElementById('btn-selesaikan-trx').addEventListener('click', () => {
+            if(checkDemoBlock()) return;
+            if(stateCart.length === 0) return showToast('Keranjang kosong!');
+            
+            let pel = document.getElementById('kasir-pelanggan').value.trim().toUpperCase() || 'UMUM';
+            let status = document.getElementById('kasir-status-bayar').value;
+            let idDompetPotong = document.getElementById('kasir-dompet-potong').value;
+
+            if(status === 'HUTANG' && pel === 'UMUM') return showToast('Nama pelanggan wajib diisi untuk hutang!');
+
+            let total = 0; const con = document.getElementById('struk-items'); con.innerHTML = ''; let waItemsText = '';
+            stateCart.forEach(item => {
+                const sub = item.price * item.qty; total += sub;
+                con.innerHTML += `<div class="flex justify-between items-start"><div class="flex-1 pr-2"><p class="font-bold text-gray-800 uppercase text-[11px]">${item.name}</p><p class="text-[10px] text-gray-500">${item.qty}x @${item.price}</p></div><p class="font-bold text-gray-800 text-[11px]">${formatRp(sub)}</p></div>`;
+                waItemsText += `- ${item.name} (${item.qty}x): ${formatRp(sub)}\n`;
+            });
+            const dateStr = formatDate();
+            
+            // Proses Potong Dompet
+            if(idDompetPotong) {
+                let idxW = stateWallets.findIndex(w => w.id == idDompetPotong);
+                if(idxW !== -1) {
+                    stateWallets[idxW].balance -= total;
+                    stateMutasi.unshift({ id: uid(), date: dateStr, walletName: stateWallets[idxW].name, type: 'OUT', amount: total, note: `Potong Saldo (${pel})`, timestamp: nowTs() });
+                    syncToServer('WALLETS', stateWallets);
+                    syncToServer('MUTASI', stateMutasi);
+                    renderDompet();
+                }
+            }
+
+            document.getElementById('struk-total').textContent = formatRp(total); document.getElementById('struk-date').textContent = dateStr; document.getElementById('struk-pelanggan-status').textContent = `PEL: ${pel} | ST: ${status}`;
+            
+            const trxTimestamp = nowTs();
+            stateTransactions.push({ id: uid(), timestamp: trxTimestamp, date: dateStr, customer: pel, total: total, status: status, items: [...stateCart] });
+            syncToServer('TRANSACTIONS', stateTransactions);
+            renderTransactions();
+
+            if(status === 'HUTANG') {
+                const ket = 'Trx POS: ' + stateCart.map(c=>c.name).join(', ');
+                stateHutang.push({ id: uid(), date: dateStr, name: pel, amount: total, note: ket, timestamp: nowTs() });
+                stateRiwayatHutang.push({ id: uid(), date: dateStr, name: pel, amount: total, type: 'HUTANG BARU', note: 'Dari Kasir', timestamp: nowTs() });
+                syncToServer('HUTANG', stateHutang);
+                syncToServer('RIWAYAT_HUTANG', stateRiwayatHutang);
+                renderHutangList(); renderHutangRiwayat(); updateDashboardStats();
+            }
+
+            currentStrukTextWA = `*STRUK PEMBELIAN ${appSettings.namaToko || 'TOKO'}*\n----------------------\nTgl: ${dateStr}\nPelanggan: ${pel}\nStatus: ${status}\n----------------------\n${waItemsText}----------------------\n*TOTAL: ${formatRp(total)}*\nTerima kasih!`;
+
+            stateCart = []; updateCartUI(); renderKasir();
+            document.getElementById('kasir-pelanggan').value = ''; document.getElementById('kasir-status-bayar').value = 'LUNAS'; document.getElementById('kasir-dompet-potong').value = '';
+            
+            document.getElementById('modal-keranjang').classList.add('hidden'); document.getElementById('modal-keranjang').classList.remove('flex');
+            document.getElementById('modal-struk').classList.remove('hidden'); document.getElementById('modal-struk').classList.add('flex');
+        });
+        document.getElementById('btn-wa-struk').addEventListener('click', () => { window.open('https://wa.me/?text=' + encodeURIComponent(currentStrukTextWA), '_blank'); });
+
+        // --- HUTANG PIUTANG CERDAS (COMPACT LIST) & JATUH TEMPO ---
+        function toggleHutangTab(v) {
+            const bL = document.getElementById('tab-btn-hutang-list'); const bR = document.getElementById('tab-btn-hutang-riwayat'); const vL = document.getElementById('hutang-view-list'); const vR = document.getElementById('hutang-view-riwayat');
+            if(v === 'list') { vL.classList.remove('hidden'); vR.classList.add('hidden'); bL.className = 'flex-1 bg-blue-600 text-white text-[11px] font-bold py-3 rounded-xl shadow-md transition-all'; bR.className = 'flex-1 text-gray-400 text-[11px] font-bold py-3 rounded-xl hover:text-gray-600 transition-all'; }
+            else { vL.classList.add('hidden'); vR.classList.remove('hidden'); bR.className = 'flex-1 bg-blue-600 text-white text-[11px] font-bold py-3 rounded-xl shadow-md transition-all'; bL.className = 'flex-1 text-gray-400 text-[11px] font-bold py-3 rounded-xl hover:text-gray-600 transition-all'; }
+        }
+        
+        function cekJatuhTempo() {
+            let overdueNames = new Set();
+            stateHutang.forEach(h => {
+                const ageDays = (Date.now() - (h.timestamp || Date.now())) / (1000 * 60 * 60 * 24);
+                if (ageDays >= 5) overdueNames.add(h.name); 
+            });
+            
+            const mContainer = document.getElementById('jatuh-tempo-container');
+            const mText = document.getElementById('jatuh-tempo-text');
+            
+            if (overdueNames.size > 0) {
+                mContainer.classList.remove('hidden');
+                mText.textContent = `Peringatan Jatuh Tempo (H-2 / Lebih): Segera tagih piutang dari pelanggan berikut -> ${Array.from(overdueNames).join(' • ')}`;
+            } else {
+                mContainer.classList.add('hidden');
+            }
+        }
+
+        function renderHutangList() {
+            const con = document.getElementById('container-hutang-list'); con.innerHTML = '';
+            const search = document.getElementById('search-hutang').value.toUpperCase();
+            
+            let filtered = stateHutang.filter(h => h.name.includes(search));
+            if(filtered.length === 0) { con.innerHTML = '<p class="text-center text-xs text-gray-400 py-6">Tidak ada hutang.</p>'; updateDashboardStats(); cekJatuhTempo(); return; }
+
+            let grouped = {};
+            filtered.forEach(h => {
+                if(!grouped[h.name]) grouped[h.name] = { name: h.name, amount: 0, count: 0, isOverdue: false };
+                grouped[h.name].amount += h.amount;
+                grouped[h.name].count += 1;
+                
+                const ageDays = (Date.now() - (h.timestamp || Date.now())) / (1000 * 60 * 60 * 24);
+                if (ageDays >= 5) grouped[h.name].isOverdue = true;
+            });
+
+            Object.values(grouped).forEach(g => {
+                const safeName = g.name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                const textColor = g.isOverdue ? 'text-red-600 font-extrabold animate-pulse' : 'text-gray-800';
+                const iconColor = g.isOverdue ? 'bg-red-600' : 'bg-red-500';
+                const alertIcon = g.isOverdue ? `<i class="ph-fill ph-warning-circle text-red-500 text-[10px] ml-1"></i>` : '';
+
+                con.innerHTML += `
+                <div class="bg-white p-2.5 rounded-xl shadow-sm flex items-center border ${g.isOverdue ? 'border-red-200 bg-red-50/20' : 'border-gray-100'} mb-2">
+                    <div class="w-8 h-8 rounded-xl ${iconColor} text-white flex items-center justify-center font-bold text-xs mr-2">${g.name.charAt(0)}</div>
+                    <div class="flex-1">
+                        <h4 class="font-bold ${textColor} text-xs uppercase flex items-center">${g.name} ${alertIcon}</h4>
+                        <p class="text-[8px] text-gray-400 mt-0.5">${g.count} Catatan Faktur / Produk</p>
+                        <span class="text-red-500 text-[10px] font-bold mt-1 inline-block">${formatRp(g.amount)}</span>
+                    </div>
+                    <div class="flex gap-1 ml-2">
+                        <button onclick="detailHutang('${safeName}')" class="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shadow-sm hover:bg-blue-100 transition-colors" title="Detail"><i class="ph-bold ph-info text-[11px]"></i></button>
+                        <button onclick="editNamaHutang('${safeName}')" class="w-7 h-7 rounded-lg bg-yellow-50 text-yellow-600 flex items-center justify-center shadow-sm hover:bg-yellow-100 transition-colors" title="Edit Nama"><i class="ph-bold ph-pencil-simple text-[11px]"></i></button>
+                    </div>
+                </div>`;
+            });
+            updateDashboardStats();
+            cekJatuhTempo();
+        }
+
+        function editNamaHutang(oldName) {
+            showPrompt(`Ubah nama pelanggan untuk seluruh hutang ${oldName}:`, oldName, (newName) => {
+                if(newName && newName.trim().toUpperCase() !== oldName) {
+                    if(checkDemoBlock()) return;
+                    const finalName = newName.trim().toUpperCase();
+                    stateHutang.forEach(h => { if(h.name === oldName) h.name = finalName; });
+                    stateRiwayatHutang.forEach(r => { if(r.name === oldName) r.name = finalName; });
+                    syncToServer('HUTANG', stateHutang);
+                    syncToServer('RIWAYAT_HUTANG', stateRiwayatHutang);
+                    renderHutangList(); renderHutangRiwayat();
+                    showInfo('Nama pelanggan berhasil diubah.');
+                }
+            });
+        }
+
+        function detailHutang(name) {
+            document.getElementById('detail-hutang-name').textContent = 'Hutang: ' + name;
+            renderDetailHutangItems(name);
+            openModal('detail-hutang');
+        }
+
+        function renderDetailHutangItems(name) {
+            const con = document.getElementById('detail-hutang-content'); con.innerHTML = '';
+            const items = stateHutang.filter(h => h.name === name);
+            if(items.length === 0) { closeModals(); renderHutangList(); return; }
+            
+            const safeName = name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
+            items.forEach(h => {
+                const ageDays = (Date.now() - (h.timestamp || Date.now())) / (1000 * 60 * 60 * 24);
+                const isOverdue = ageDays >= 5;
+                const textColor = isOverdue ? 'text-red-600' : 'text-gray-800';
+                const warningMsg = isOverdue ? `<span class="text-[9px] text-red-500 font-bold ml-1 animate-pulse">(Jatuh Tempo!)</span>` : '';
+                
+                con.innerHTML += `
+                <div class="bg-gray-50 p-2.5 rounded-xl border ${isOverdue ? 'border-red-300' : 'border-gray-200'} flex justify-between items-center mb-2">
+                    <div class="flex-1 pr-2">
+                        <p class="text-[9px] text-gray-400">${h.date}</p>
+                        <p class="text-xs font-bold ${textColor} uppercase mt-0.5 line-clamp-2">${h.note} ${warningMsg}</p>
+                        <p class="text-red-500 text-[10px] font-bold mt-1">${formatRp(h.amount)}</p>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="bayarHutangDetail('${h.id}', '${safeName}')" class="w-6 h-6 rounded-md bg-emerald-100 text-emerald-600 flex items-center justify-center hover:bg-emerald-200 transition-colors" title="Lunas"><i class="ph-bold ph-check text-[10px]"></i></button>
+                        <button onclick="hapusHutangDetail('${h.id}', '${safeName}')" class="w-6 h-6 rounded-md bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-colors" title="Hapus"><i class="ph-bold ph-trash text-[10px]"></i></button>
+                    </div>
+                </div>`;
+            });
+        }
+
+        function bayarHutangDetail(id, name) {
+            if(checkDemoBlock()) return;
+            const h = stateHutang.find(x => x.id == id);
+            if(h) {
+                showConfirm(`Tandai LUNAS hutang ini sebesar ${formatRp(h.amount)}?`, () => {
+                    stateRiwayatHutang.push({ id: uid(), date: formatDate(), name: h.name, amount: h.amount, type: 'LUNAS', note: h.note, timestamp: nowTs() });
+                    stateHutang = stateHutang.filter(x => x.id != id);
+                    syncToServer('HUTANG', stateHutang);
+                    syncToServer('RIWAYAT_HUTANG', stateRiwayatHutang);
+                    showInfo('Hutang lunas dicatat.');
+                    renderHutangList(); renderHutangRiwayat();
+                    detailHutang(name); 
+                }, 'Konfirmasi Lunas', false);
+            }
+        }
+
+        function hapusHutangDetail(id, name) {
+            if(checkDemoBlock()) return;
+            showConfirm('Hapus catatan hutang ini secara permanen tanpa status lunas?', () => {
+                stateHutang = stateHutang.filter(x => x.id != id);
+                syncToServer('HUTANG', stateHutang);
+                showInfo('Catatan hutang dihapus.', false);
+                renderHutangList(); detailHutang(name);
+            });
+        }
+
+        function renderHutangRiwayat() {
+            const con = document.getElementById('container-hutang-riwayat'); con.innerHTML = '';
+            if(stateRiwayatHutang.length === 0) { con.innerHTML = '<p class="text-center text-xs text-gray-400 py-6">Belum ada riwayat hutang.</p>'; return; }
+            [...stateRiwayatHutang].reverse().forEach(r => {
+                const isLunas = r.type === 'LUNAS';
+                con.innerHTML += `
+                <div class="bg-white p-2.5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between mb-2">
+                    <div>
+                        <p class="text-[10px] font-bold text-gray-800 uppercase">${r.name}</p>
+                        <p class="text-[8px] text-gray-400">${r.date} • ${r.note}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[8px] font-bold px-1.5 py-0.5 rounded ${isLunas?'bg-emerald-100 text-emerald-600':'bg-red-100 text-red-600'}">${r.type}</span>
+                        <p class="text-[10px] font-bold text-gray-800 mt-1">${formatRp(r.amount)}</p>
+                    </div>
+                </div>`;
+            });
+        }
+
+        function hapusSemuaRiwayatHutang() {
+            if(checkDemoBlock()) return;
+            showConfirm('Yakin ingin menghapus seluruh riwayat aktifitas hutang? Data tidak dapat dikembalikan.', () => {
+                stateRiwayatHutang = []; syncToServer('RIWAYAT_HUTANG', stateRiwayatHutang);
+                renderHutangRiwayat(); showInfo('Semua riwayat aktifitas hutang dihapus.', false);
+            });
+        }
+        
+        document.getElementById('btn-simpan-hutang').addEventListener('click', () => {
+            if(checkDemoBlock()) return;
+            const nama = document.getElementById('input-hutang-nama').value.trim().toUpperCase();
+            const nom = parseInt(document.getElementById('input-hutang-nominal').value) || 0;
+            const ket = document.getElementById('input-hutang-ket').value.trim() || 'Manual';
+            if(!nama) return showToast('Nama wajib diisi!');
+            
+            const dateStr = formatDate();
+            stateHutang.push({ id: uid(), date: dateStr, name: nama, amount: nom, note: ket, timestamp: nowTs() });
+            stateRiwayatHutang.push({ id: uid(), date: dateStr, name: nama, amount: nom, type: 'HUTANG BARU', note: ket, timestamp: nowTs() });
+            
+            syncToServer('HUTANG', stateHutang);
+            syncToServer('RIWAYAT_HUTANG', stateRiwayatHutang);
+
+            closeModals(); renderHutangList(); renderHutangRiwayat(); showInfo('Hutang ditambahkan.');
+        });
+        
+        document.querySelector('button[onclick="openModal(\'hutang\')"]').addEventListener('click', () => {
+             document.getElementById('title-modal-hutang').textContent = 'Catat Hutang'; document.getElementById('input-hutang-id').value = ''; document.getElementById('input-hutang-nama').value = ''; document.getElementById('input-hutang-nominal').value = '0'; document.getElementById('input-hutang-ket').value = '';
+        });
+
+        // --- DOMPET ---
+        function getWalletColor(name) { const n = name.toUpperCase(); if(n.includes('DANA')) return 'bg-blue-500'; if(n.includes('BCA')) return 'bg-blue-800'; if(n.includes('BRI')||n.includes('MANDIRI')) return 'bg-blue-600'; if(n.includes('OVO')) return 'bg-purple-600'; if(n.includes('GOPAY')) return 'bg-blue-400'; if(n.includes('SHOPEE')) return 'bg-orange-500'; return 'bg-gray-800'; }
+        function renderDompet() {
+            const cTun = document.getElementById('container-dompet-tunai'); const cDig = document.getElementById('container-dompet-digital');
+            cTun.innerHTML = ''; cDig.innerHTML = '';
+            stateWallets.forEach(w => {
+                if(w.type === 'TUNAI') {
+                    cTun.innerHTML += `<div class="bg-yellow-500 rounded-2xl p-4 text-white shadow-md relative overflow-hidden flex flex-col h-28"><i class="ph-fill ph-money absolute -right-2 -bottom-2 text-6xl text-white/20"></i><div class="absolute top-2 right-2 flex gap-1 z-10"><button onclick="editDompet('${w.id}')" class="w-6 h-6 bg-white/20 hover:bg-white/40 transition rounded flex items-center justify-center"><i class="ph-bold ph-pencil-simple text-[10px]"></i></button><button onclick="hapusDompet('${w.id}')" class="w-6 h-6 bg-red-500/80 hover:bg-red-500 transition text-white rounded flex items-center justify-center"><i class="ph-bold ph-trash text-[10px]"></i></button></div><p class="text-[9px] font-bold text-yellow-100 z-10 uppercase">${w.name}</p><div class="mt-auto z-10"><p class="text-[8px] font-bold text-yellow-100">SALDO</p><h3 class="font-bold text-sm tracking-tight leading-none mt-0.5">${formatRp(w.balance)}</h3></div></div>`;
+                } else {
+                    cDig.innerHTML += `<div class="${getWalletColor(w.name)} rounded-2xl p-4 text-white shadow-md relative overflow-hidden flex flex-col h-28"><i class="ph-fill ph-bank absolute -right-2 -bottom-2 text-6xl text-white/10"></i><div class="absolute top-2 right-2 flex gap-1 z-10"><button onclick="editDompet('${w.id}')" class="w-6 h-6 bg-white/20 hover:bg-white/40 transition rounded flex items-center justify-center"><i class="ph-bold ph-pencil-simple text-[10px]"></i></button><button onclick="hapusDompet('${w.id}')" class="w-6 h-6 bg-red-500/80 hover:bg-red-500 transition text-white rounded flex items-center justify-center"><i class="ph-bold ph-trash text-[10px]"></i></button></div><p class="text-[9px] font-bold text-white/70 z-10 uppercase">${w.name}</p><div class="mt-auto z-10"><p class="text-[8px] font-bold text-white/70">SALDO</p><h3 class="font-bold text-sm tracking-tight leading-none mt-0.5">${formatRp(w.balance)}</h3></div></div>`;
+                }
+            });
+            updateDashboardStats();
+        }
+        
+        function openModalTambahDompet() {
+            document.getElementById('title-modal-dompet').textContent = 'Tambah Rekening';
+            document.getElementById('input-dompet-id').value = ''; document.getElementById('input-dompet-nama').value = ''; document.getElementById('input-dompet-saldo').value = '0';
+            openModal('dompet');
+        }
+
+        function hapusDompet(id) {
+            if(checkDemoBlock()) return;
+            showConfirm('Hapus dompet ini? Seluruh pencatatan saldo di dompet ini akan terhapus.', () => {
+                stateWallets = stateWallets.filter(w => w.id != id);
+                syncToServer('WALLETS', stateWallets); renderDompet(); showInfo('Dompet dihapus.', false);
+            });
+        }
+
+        document.getElementById('btn-simpan-dompet').addEventListener('click', () => {
+            if(checkDemoBlock()) return;
+            const id=document.getElementById('input-dompet-id').value; const tp=document.getElementById('input-dompet-tipe').value; const nm=document.getElementById('input-dompet-nama').value; const s=parseInt(document.getElementById('input-dompet-saldo').value)||0;
+            if(!nm) return showToast('Nama wajib diisi!');
+            if(id) {
+                const i = stateWallets.findIndex(w=>w.id==id);
+                if(i!==-1) { 
+                    const diff = s - stateWallets[i].balance; 
+                    if(diff!==0) { 
+                        stateMutasi.unshift({ id:uid(), date:formatDate(), walletName:nm, type:diff>0?'IN':'OUT', amount:Math.abs(diff), note:diff>0?'Penyesuaian (Tambah)':'Penyesuaian (Kurang)', timestamp:nowTs()}); 
+                        renderMutasi(); 
+                    } 
+                    stateWallets[i] = {...stateWallets[i], type:tp, name:nm, balance:s}; 
+                    showInfo('Diperbarui.'); 
+                }
+            } else { stateWallets.push({ id:uid(), type:tp, name:nm, balance:s, timestamp:nowTs() }); showInfo('Ditambahkan.'); }
+            syncToServer('WALLETS', stateWallets); syncToServer('MUTASI', stateMutasi); closeModals(); renderDompet();
+        });
+        function editDompet(id) { const w=stateWallets.find(x=>x.id == id); if(w) { document.getElementById('title-modal-dompet').textContent='Edit Saldo'; document.getElementById('input-dompet-id').value=w.id; document.getElementById('input-dompet-tipe').value=w.type; document.getElementById('input-dompet-nama').value=w.name; document.getElementById('input-dompet-saldo').value=w.balance; openModal('dompet'); } }
+        
+        function toggleDompetTab(v) {
+            const bS=document.getElementById('tab-btn-saldo'); const bM=document.getElementById('tab-btn-mutasi'); const vS=document.getElementById('dompet-view-saldo'); const vM=document.getElementById('dompet-view-mutasi');
+            if(v==='saldo'){ vS.classList.remove('hidden'); vM.classList.add('hidden'); bS.className='flex-1 bg-blue-600 text-white text-[11px] font-bold py-3 rounded-xl shadow-md transition-all'; bM.className='flex-1 text-gray-400 text-[11px] font-bold py-3 rounded-xl hover:text-gray-600 transition-all'; }
+            else { vS.classList.add('hidden'); vM.classList.remove('hidden'); bM.className='flex-1 bg-blue-600 text-white text-[11px] font-bold py-3 rounded-xl shadow-md transition-all'; bS.className='flex-1 text-gray-400 text-[11px] font-bold py-3 rounded-xl hover:text-gray-600 transition-all'; renderMutasi(); }
+        }
+        
+        function renderMutasi() {
+            const con=document.getElementById('container-mutasi-list'); con.innerHTML='';
+            if(stateMutasi.length===0){ con.innerHTML='<p class="text-center text-xs text-gray-400 py-10">Belum ada mutasi.</p>'; return; }
+            stateMutasi.forEach(m => { const isM=m.type==='IN'; con.innerHTML+=`<div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${isM?'bg-green-100 text-green-600':'bg-red-100 text-red-600'} flex items-center justify-center"><i class="ph-bold ${isM?'ph-arrow-down-left':'ph-arrow-up-right'} text-sm"></i></div><div><p class="text-[10px] font-bold text-gray-800 uppercase">${m.walletName}</p><p class="text-[9px] text-gray-400">${m.date} • ${m.note}</p></div></div><span class="text-xs font-bold ${isM?'text-green-600':'text-red-600'}">${isM?'+':'-'} ${formatRp(m.amount)}</span></div>`; });
+        }
+
+        function hapusSemuaMutasi() {
+            if(checkDemoBlock()) return;
+            showConfirm('Yakin ingin menghapus SELURUH riwayat mutasi? Data tidak dapat dikembalikan.', () => {
+                stateMutasi = []; syncToServer('MUTASI', stateMutasi); renderMutasi(); showInfo('Semua riwayat mutasi dibersihkan.', false);
+            });
+        }
+
+        // --- INIT & NAVIGATION ---
+        function switchTab(tId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden')); document.getElementById('tab-'+tId).classList.remove('hidden');
+            document.querySelectorAll('.nav-btn').forEach(b => {
+                const i=b.querySelector('.icon-bg'); const s=b.querySelector('span');
+                if(b.dataset.target===tId) { i.classList.add('active-tab-icon'); s.classList.remove('hidden'); s.classList.add('text-white'); } else { i.classList.remove('active-tab-icon'); s.classList.add('hidden'); s.classList.remove('text-white'); }
+            });
+        }
+
+        document.getElementById('toggle-password').addEventListener('click', () => {
+            const input = document.getElementById('store-id'); const icon = document.getElementById('eye-icon');
+            if (input.type === 'password') { input.type = 'text'; icon.classList.replace('ph-eye', 'ph-eye-slash'); } 
+            else { input.type = 'password'; icon.classList.replace('ph-eye-slash', 'ph-eye'); }
+        });
+
+        // --- SISTEM LOGIN DARI GOOGLE SCRIPT ---
+        document.getElementById('btn-login').addEventListener('click', () => {
+            const id = document.getElementById('store-id').value.trim().toLowerCase();
+            if(!id) return showToast('Masukkan ID Toko!');
+            
+            document.getElementById('btn-text').classList.add('hidden'); 
+            document.getElementById('btn-loader').classList.remove('hidden'); 
+            document.getElementById('store-id').disabled = true;
+
+            if(typeof google !== 'undefined' && google.script) {
+                google.script.run
+                    .withSuccessHandler(function(response) {
+                        if(response.success) {
+                            appSettings = response.settings;
+                            isDemoMode = response.isDemo; // Set State Demo 
+                            sessionToken = response.sessionToken || ''; 
+                            
+                            google.script.run
+                                .withSuccessHandler(function(serverData) {
+                                    stateProducts = serverData.PRODUCTS || [];
+                                    stateWallets = serverData.WALLETS || [];
+                                    stateTransactions = serverData.TRANSACTIONS || [];
+                                    stateHutang = serverData.HUTANG || [];
+                                    stateRiwayatHutang = serverData.RIWAYAT_HUTANG || [];
+                                    stateMutasi = serverData.MUTASI || [];
+                                    
+                                    lanjutkanKeAplikasi();
+                                })
+                                .withFailureHandler(function(err) {
+                                    gagalMasuk((err && err.message) ? err.message : 'Gagal memuat data awal dari Google Sheet!');
+                                })
+                                .loadInitialData(sessionToken);
+                        } else {
+                            gagalMasuk(response.message);
+                        }
+                    })
+                    .withFailureHandler(function(err) {
+                        gagalMasuk('Gagal terhubung ke Database Google Sheet!');
+                    })
+                    .verifikasiLoginServer(id);
+            } else {
+                // Fallback Mode Offline/Testing
+                setTimeout(() => {
+                    appSettings = { idLogin: 'lunatic', idDemo: 'demo', namaToko: 'LUNACELL', namaApp: 'PREMIUM POS' };
+                    if(id === appSettings.idLogin || id === 'demo') {
+                        isDemoMode = (id === 'demo');
+                        sessionToken = 'offline-demo';
+                        stateProducts = [{ id: 1, name: 'TOPUP EWALLET', type: 'DIGITAL', modal: 0, jual: 2000 }];
+                        stateWallets = [{ id: 1, type: 'TUNAI', name: 'KAS UTAMA', balance: 1598000 }];
+                        lanjutkanKeAplikasi();
+                    } else {
+                        gagalMasuk('Buka via Link Google Script atau ID Salah.');
+                    }
+                }, 800);
+            }
+        });
+
+        function lanjutkanKeAplikasi() {
+            document.getElementById('btn-text').classList.remove('hidden'); 
+            document.getElementById('btn-loader').classList.add('hidden'); 
+            document.getElementById('store-id').disabled = false;
+            
+            document.getElementById('login-view').classList.add('hidden'); 
+            document.getElementById('main-view').classList.remove('hidden'); 
+            document.getElementById('store-id').value = '';
+            
+            document.querySelectorAll('.header-toko-text').forEach(el => el.textContent = appSettings.namaToko.toUpperCase());
+            document.querySelectorAll('.header-app-text').forEach(el => el.textContent = appSettings.namaApp.toUpperCase());
+
+            if (isDemoMode) showToast('Mode Demo Aktif: Anda tidak dapat merubah database server!', true);
+            else showInfo('Berhasil masuk ke Toko!');
+
+            if(!window.chartInit) {
+                const ctx=document.getElementById('trendChart').getContext('2d'); let grad=ctx.createLinearGradient(0,0,0,150); grad.addColorStop(0,'rgba(16,185,129,0.25)'); grad.addColorStop(1,'rgba(16,185,129,0)');
+                window.myChart = new Chart(ctx,{type:'line',data:{labels:['Sen','Sel','Rab','Kam','Jum','Sab','Min'],datasets:[{data:[0,0,0,6.2,0,0,0],borderColor:'#10b981',borderWidth:3,backgroundColor:grad,pointBackgroundColor:'#10b981',pointBorderColor:'#fff',pointRadius:5,fill:true,tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#f3f4f6'},min:0,ticks:{callback:v=>'Rp'+v+'jt'}}}}});
+                window.chartInit=true;
+            }
+
+            renderStok(); renderKasir(); renderDompet(); renderTransactions(); renderHutangList();
+        }
+
+        function gagalMasuk(pesan) {
+            document.getElementById('btn-text').classList.remove('hidden'); 
+            document.getElementById('btn-loader').classList.add('hidden'); 
+            document.getElementById('store-id').disabled = false;
+            showToast(pesan);
+        }
+
+        document.getElementById('btn-logout').addEventListener('click', () => { sessionToken = ''; closeModals(); document.getElementById('main-view').classList.add('hidden'); document.getElementById('login-view').classList.remove('hidden'); switchTab('dashboard'); });
+        document.getElementById('store-id').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('btn-login').click(); });
+    </script>
+</body>
+</html>
