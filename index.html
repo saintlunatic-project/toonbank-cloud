@@ -505,7 +505,6 @@
         let currentKasirFilter = 'SEMUA';
         let currentStrukTextWA = '';
         let isDemoMode = false;
-        let sessionToken = '';
         let currentDashFilter = 'DEFAULT';
 
         // --- DARK MODE LOGIC ---
@@ -529,9 +528,6 @@
         // --- UTILS ---
         function formatRp(angka) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka); }
         function formatDate() { return new Date().toLocaleString('id-ID', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }); }
-        function uid() { return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
-        function nowTs() { return Date.now(); }
-        function getRecordTime(record) { return Number(record && (record.timestamp || record.createdAt || record.id)) || 0; }
 
         // --- PRIVASI MODE DEMO ---
         function checkDemoBlock() {
@@ -546,12 +542,7 @@
         function syncToServer(key, dataObj) {
             if (isDemoMode) return; // Cegah sinkronisasi mutlak ke server untuk Demo
             if(typeof google !== 'undefined' && google.script) {
-                if(!sessionToken) { showToast('Sesi login tidak ditemukan. Silakan login ulang!'); return; }
-                google.script.run
-                    .withFailureHandler(function(err) {
-                        showToast((err && err.message) ? err.message : 'Gagal menyimpan data ke server!');
-                    })
-                    .saveDataServer(sessionToken, key, JSON.stringify(dataObj));
+                google.script.run.saveDataServer(key, JSON.stringify(dataObj));
             }
         }
 
@@ -575,12 +566,12 @@
 
             if (currentDashFilter === 'HARI_INI') {
                 let startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
-                filteredTxs = stateTransactions.filter(t => getRecordTime(t) >= startOfDay.getTime());
+                filteredTxs = stateTransactions.filter(t => t.id >= startOfDay.getTime());
             } else if (currentDashFilter === '7_HARI') {
-                filteredTxs = stateTransactions.filter(t => (now - getRecordTime(t)) <= (7 * oneDay));
+                filteredTxs = stateTransactions.filter(t => (now - t.id) <= (7 * oneDay));
             } else if (currentDashFilter === 'BULAN_INI') {
                 let startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
-                filteredTxs = stateTransactions.filter(t => getRecordTime(t) >= startOfMonth.getTime());
+                filteredTxs = stateTransactions.filter(t => t.id >= startOfMonth.getTime());
             }
 
             if (currentDashFilter === 'DEFAULT') {
@@ -589,8 +580,8 @@
                 let startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
 
                 stateTransactions.forEach(t => {
-                    if(getRecordTime(t) >= startOfMonth.getTime()) oBulan += t.total;
-                    if(getRecordTime(t) >= startOfDay.getTime()) oHari += t.total;
+                    if(t.id >= startOfMonth.getTime()) oBulan += t.total;
+                    if(t.id >= startOfDay.getTime()) oHari += t.total;
                     t.items.forEach(i => {
                         let prod = stateProducts.find(p => p.id == i.id);
                         if(prod && prod.modal > 0) laba += ((i.price - prod.modal) * i.qty);
@@ -637,11 +628,8 @@
                     let label = d.toLocaleString('id-ID', { day:'numeric', month:'short' });
                     labels.push(label);
                     
-                    let dayStart = new Date(d); dayStart.setHours(0,0,0,0);
-                    let dayEnd = dayStart.getTime() + (24 * 60 * 60 * 1000);
                     let sum = stateTransactions.reduce((acc, t) => {
-                        const trxTime = getRecordTime(t);
-                        if(trxTime >= dayStart.getTime() && trxTime < dayEnd) return acc + t.total;
+                        if(t.date.includes(label)) return acc + t.total;
                         return acc;
                     }, 0);
                     dataOmset.push(sum / 1000000); 
@@ -796,12 +784,8 @@
         function hapusRiwayatBulanan() {
             if(checkDemoBlock()) return;
             showConfirm('Hapus semua riwayat transaksi untuk bulan ini?', () => {
-                const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
-                const nextMonth = new Date(startOfMonth); nextMonth.setMonth(nextMonth.getMonth() + 1);
-                stateTransactions = stateTransactions.filter(t => {
-                    const trxTime = getRecordTime(t);
-                    return !(trxTime >= startOfMonth.getTime() && trxTime < nextMonth.getTime());
-                });
+                const currentMonth = new Date().toLocaleString('id-ID', { month: 'short' });
+                stateTransactions = stateTransactions.filter(t => !t.date.includes(currentMonth));
                 syncToServer('TRANSACTIONS', stateTransactions);
                 renderTransactions(); showInfo('Riwayat bulan ini dibersihkan.');
             });
@@ -864,7 +848,7 @@
                 const idx = stateProducts.findIndex(p => p.id == idToEdit);
                 if (idx !== -1) { stateProducts[idx] = { id: idToEdit, name: n, type, modal, jual }; showInfo('Data produk diperbarui.'); }
             } else {
-                stateProducts.push({ id: uid(), name: n, type, modal, jual, timestamp: nowTs() }); showInfo('Produk ditambah.');
+                stateProducts.push({ id: Date.now(), name: n, type, modal, jual }); showInfo('Produk ditambah.');
             }
             
             syncToServer('PRODUCTS', stateProducts);
@@ -966,7 +950,7 @@
                 let idxW = stateWallets.findIndex(w => w.id == idDompetPotong);
                 if(idxW !== -1) {
                     stateWallets[idxW].balance -= total;
-                    stateMutasi.unshift({ id: uid(), date: dateStr, walletName: stateWallets[idxW].name, type: 'OUT', amount: total, note: `Potong Saldo (${pel})`, timestamp: nowTs() });
+                    stateMutasi.unshift({ id: Date.now(), date: dateStr, walletName: stateWallets[idxW].name, type: 'OUT', amount: total, note: `Potong Saldo (${pel})` });
                     syncToServer('WALLETS', stateWallets);
                     syncToServer('MUTASI', stateMutasi);
                     renderDompet();
@@ -975,15 +959,14 @@
 
             document.getElementById('struk-total').textContent = formatRp(total); document.getElementById('struk-date').textContent = dateStr; document.getElementById('struk-pelanggan-status').textContent = `PEL: ${pel} | ST: ${status}`;
             
-            const trxTimestamp = nowTs();
-            stateTransactions.push({ id: uid(), timestamp: trxTimestamp, date: dateStr, customer: pel, total: total, status: status, items: [...stateCart] });
+            stateTransactions.push({ id: Date.now(), date: dateStr, customer: pel, total: total, status: status, items: [...stateCart] });
             syncToServer('TRANSACTIONS', stateTransactions);
             renderTransactions();
 
             if(status === 'HUTANG') {
                 const ket = 'Trx POS: ' + stateCart.map(c=>c.name).join(', ');
-                stateHutang.push({ id: uid(), date: dateStr, name: pel, amount: total, note: ket, timestamp: nowTs() });
-                stateRiwayatHutang.push({ id: uid(), date: dateStr, name: pel, amount: total, type: 'HUTANG BARU', note: 'Dari Kasir', timestamp: nowTs() });
+                stateHutang.push({ id: Date.now(), date: dateStr, name: pel, amount: total, note: ket, timestamp: Date.now() });
+                stateRiwayatHutang.push({ id: Date.now(), date: dateStr, name: pel, amount: total, type: 'HUTANG BARU', note: 'Dari Kasir' });
                 syncToServer('HUTANG', stateHutang);
                 syncToServer('RIWAYAT_HUTANG', stateRiwayatHutang);
                 renderHutangList(); renderHutangRiwayat(); updateDashboardStats();
@@ -1119,7 +1102,7 @@
             const h = stateHutang.find(x => x.id == id);
             if(h) {
                 showConfirm(`Tandai LUNAS hutang ini sebesar ${formatRp(h.amount)}?`, () => {
-                    stateRiwayatHutang.push({ id: uid(), date: formatDate(), name: h.name, amount: h.amount, type: 'LUNAS', note: h.note, timestamp: nowTs() });
+                    stateRiwayatHutang.push({ id: Date.now(), date: formatDate(), name: h.name, amount: h.amount, type: 'LUNAS', note: h.note });
                     stateHutang = stateHutang.filter(x => x.id != id);
                     syncToServer('HUTANG', stateHutang);
                     syncToServer('RIWAYAT_HUTANG', stateRiwayatHutang);
@@ -1175,8 +1158,8 @@
             if(!nama) return showToast('Nama wajib diisi!');
             
             const dateStr = formatDate();
-            stateHutang.push({ id: uid(), date: dateStr, name: nama, amount: nom, note: ket, timestamp: nowTs() });
-            stateRiwayatHutang.push({ id: uid(), date: dateStr, name: nama, amount: nom, type: 'HUTANG BARU', note: ket, timestamp: nowTs() });
+            stateHutang.push({ id: Date.now(), date: dateStr, name: nama, amount: nom, note: ket, timestamp: Date.now() });
+            stateRiwayatHutang.push({ id: Date.now(), date: dateStr, name: nama, amount: nom, type: 'HUTANG BARU', note: ket });
             
             syncToServer('HUTANG', stateHutang);
             syncToServer('RIWAYAT_HUTANG', stateRiwayatHutang);
@@ -1226,13 +1209,13 @@
                 if(i!==-1) { 
                     const diff = s - stateWallets[i].balance; 
                     if(diff!==0) { 
-                        stateMutasi.unshift({ id:uid(), date:formatDate(), walletName:nm, type:diff>0?'IN':'OUT', amount:Math.abs(diff), note:diff>0?'Penyesuaian (Tambah)':'Penyesuaian (Kurang)', timestamp:nowTs()}); 
+                        stateMutasi.unshift({ id:Date.now(), date:formatDate(), walletName:nm, type:diff>0?'IN':'OUT', amount:Math.abs(diff), note:diff>0?'Penyesuaian (Tambah)':'Penyesuaian (Kurang)'}); 
                         renderMutasi(); 
                     } 
                     stateWallets[i] = {...stateWallets[i], type:tp, name:nm, balance:s}; 
                     showInfo('Diperbarui.'); 
                 }
-            } else { stateWallets.push({ id:uid(), type:tp, name:nm, balance:s, timestamp:nowTs() }); showInfo('Ditambahkan.'); }
+            } else { stateWallets.push({ id:Date.now(), type:tp, name:nm, balance:s }); showInfo('Ditambahkan.'); }
             syncToServer('WALLETS', stateWallets); syncToServer('MUTASI', stateMutasi); closeModals(); renderDompet();
         });
         function editDompet(id) { const w=stateWallets.find(x=>x.id == id); if(w) { document.getElementById('title-modal-dompet').textContent='Edit Saldo'; document.getElementById('input-dompet-id').value=w.id; document.getElementById('input-dompet-tipe').value=w.type; document.getElementById('input-dompet-nama').value=w.name; document.getElementById('input-dompet-saldo').value=w.balance; openModal('dompet'); } }
@@ -1286,7 +1269,6 @@
                         if(response.success) {
                             appSettings = response.settings;
                             isDemoMode = response.isDemo; // Set State Demo 
-                            sessionToken = response.sessionToken || ''; 
                             
                             google.script.run
                                 .withSuccessHandler(function(serverData) {
@@ -1299,10 +1281,7 @@
                                     
                                     lanjutkanKeAplikasi();
                                 })
-                                .withFailureHandler(function(err) {
-                                    gagalMasuk((err && err.message) ? err.message : 'Gagal memuat data awal dari Google Sheet!');
-                                })
-                                .loadInitialData(sessionToken);
+                                .loadInitialData();
                         } else {
                             gagalMasuk(response.message);
                         }
@@ -1317,7 +1296,6 @@
                     appSettings = { idLogin: 'lunatic', idDemo: 'demo', namaToko: 'LUNACELL', namaApp: 'PREMIUM POS' };
                     if(id === appSettings.idLogin || id === 'demo') {
                         isDemoMode = (id === 'demo');
-                        sessionToken = 'offline-demo';
                         stateProducts = [{ id: 1, name: 'TOPUP EWALLET', type: 'DIGITAL', modal: 0, jual: 2000 }];
                         stateWallets = [{ id: 1, type: 'TUNAI', name: 'KAS UTAMA', balance: 1598000 }];
                         lanjutkanKeAplikasi();
@@ -1359,7 +1337,7 @@
             showToast(pesan);
         }
 
-        document.getElementById('btn-logout').addEventListener('click', () => { sessionToken = ''; closeModals(); document.getElementById('main-view').classList.add('hidden'); document.getElementById('login-view').classList.remove('hidden'); switchTab('dashboard'); });
+        document.getElementById('btn-logout').addEventListener('click', () => { closeModals(); document.getElementById('main-view').classList.add('hidden'); document.getElementById('login-view').classList.remove('hidden'); switchTab('dashboard'); });
         document.getElementById('store-id').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('btn-login').click(); });
     </script>
 </body>
